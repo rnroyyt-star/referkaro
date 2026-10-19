@@ -81,3 +81,14 @@ npm test
 - Test Razorpay with test credentials before live use. Live payment capture, webhook delivery, refunds, and payouts must be verified in the provider dashboard.
 - Configure valid task links and correct Telegram/support links in admin settings before launch.
 - Review applicable laws, payment-provider rules, terms, privacy policy, refund policy, and payout operations before accepting real customers.
+
+## Optional AI-generated daily questions
+
+The daily-task admin screen keeps the existing three link tasks unchanged: each link still has its own display title, users open it, and the task completes after 10 seconds. The admin can click **Generate 2 Questions from These Links** to fetch readable text from the three public pages and generate two multiple-choice questions with three options each. Review/edit both questions and select the correct answer before clicking **Save / Publish**. Existing daily task API and Supabase app-state persistence are used.
+
+To enable generation, add these Hostinger environment variables and restart the Node app:
+- `AI_API_KEY` — API key for an OpenAI-compatible chat-completions provider (keep it server-side; never put it in browser code or GitHub).
+- `AI_API_URL` — optional; defaults to `https://api.openai.com/v1/chat/completions`.
+- `AI_MODEL` — optional; defaults to `gpt-4o-mini`.
+
+The feature only fetches public HTTP(S) HTML/plain-text pages and rejects obvious private/local IP URL patterns and redirects. Some sites block automated access or render content only in JavaScript; those links may not generate questions. Admin can still enter/edit questions manually. Do not treat generated answers as authoritative without reviewing them.
