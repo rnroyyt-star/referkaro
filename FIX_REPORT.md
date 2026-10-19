@@ -28,3 +28,11 @@
 ## Critical deployment note
 
 This ZIP intentionally does not import from Upstash. Before deploying it, confirm the populated state row exists at `public.app_state` with `id = referkaro_main` (or set `SUPABASE_ROW_ID` to the exact populated row). If the row is missing, the app will stop safely rather than create a blank one. Back up the current site and data before replacing the deployed files.
+
+## Referral discount update (2026-10-20)
+- Added an admin-only `admin/referral-discount` endpoint with a 0–100% discount setting and enable/disable toggle.
+- Discount is calculated server-side for accounts registered with a valid referrer and applies to the task unlock base price; service fee remains separate.
+- Both Razorpay orders and QR/UTR payment records store the applied discount, percentage, and referrer ID for auditability. Razorpay amount verification continues to compare against the server-stored payment amount.
+- Existing direct referral commission on verified payments is retained as the referrer's reward. No old user/payment records were intentionally altered.
+- Validation run: `npm test` passed (server syntax, inline JS syntax, health/homepage/registration/duplicate phone/state/session/phone/email login smoke tests).
+- Not verified against live hosting or a live Razorpay/Supabase account in this environment. Test in staging and back up production Supabase data before deploying.

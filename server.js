@@ -5,6 +5,8 @@ const APP_URL=(E.APP_URL||'http://localhost:'+PORT).replace(/\/$/,'');
 const UPLOAD_DIR=path.join(__dirname,'uploads');try{fs.mkdirSync(UPLOAD_DIR,{recursive:true})}catch{}
 const C={price:299,disc:0,fee:1,offerEnd:'2000-01-01',minWd:500,minDirectRefs:3,withdrawalDay:0,commission:100,level2:10,level3:2,dailyReward:40,taskReferral:5,taskReferralLevel2:2,videoSecs:30};
 const offerOnNow=()=>false;
+const referralDiscountPct=()=>Math.max(0,Math.min(100,Number(D.settings&&D.settings.referralDiscountPct)||0));
+const payTotalFor=u=>{const eligible=!!(u&&u.refBy&&D.users.some(x=>x.id===u.refBy))&&(!D.settings||D.settings.referralDiscountEnabled!==false);const discount=eligible?Math.round(C.price*referralDiscountPct())/100:0;return Math.max(0,Math.round((C.price-discount+C.fee)*100)/100)};
 const payTotal=()=>C.price+C.fee;
 let D={users:[],pays:[],wd:[],tix:[],sessions:{},resets:{},daily:{},otps:{},pay:{},settings:{telegramJoin:'https://t.me/movie_box00',telegramSupport:'https://t.me/movie_box00',authSupport:'https://t.me/movie_box00'},qrStats:{}};
 try{D={...D,...JSON.parse(fs.readFileSync(FILE,'utf8'))}}catch{}
@@ -149,7 +151,7 @@ const paySlots=()=>{const p=D.pay||{};let slots=Array.isArray(p.slots)?p.slots.s
 const qrStatsView=()=>{const ps=paySlots(),out={};for(const [qid,x] of Object.entries(D.qrStats||{}))out[qid]={submitted:+x.submitted||0,verified:+x.verified||0,people:Array.isArray(x.people)?x.people.length:0,amount:+x.amount||0,verifiedAmount:+x.verifiedAmount||0,created:x.created||0};return{slots:ps.slots.map((x,i)=>({slot:i,qid:x.qid,upi:x.upi||'',payee:x.payee||'',active:i===ps.active,stats:out[x.qid]||{submitted:0,verified:0,people:0,amount:0,verifiedAmount:0}})),history:out}};
 const paymentChoice=()=>{const ps=paySlots(),ok=ps.slots.map((x,i)=>x&&x.upi&&x.qr?i:-1).filter(i=>i>=0);if(!ok.length)return -1;return ok[Math.floor(Math.random()*ok.length)]};
 function state(u){const ps=paySlots(),pick=u.admin?ps.active:paymentChoice(),a=pick>=0?ps.slots[pick]||{}:{};
- const cfg={adminDemo:u.admin?(D.adminDemo||{balance:0,earned:0,referrals:0,withdrawals:0}):undefined,minWd:C.minWd,minDirectRefs:C.minDirectRefs,withdrawalDay:C.withdrawalDay,commission:C.commission,level2:C.level2,level3:C.level3,dailyReward:C.dailyReward,taskReferral:C.taskReferral,taskReferralLevel2:C.taskReferralLevel2,price:C.price,disc:C.disc,fee:C.fee,offerEnd:C.offerEnd,offerOn:offerOnNow(),paymentMode:(D.settings&&D.settings.paymentMode)==='qr'?'qr':'razorpay',razorpayEnabled:razorpayReady(),razorpayKeyId:RZP_KEY,telegramJoin:(D.settings&&D.settings.telegramJoin)||(D.settings&&D.settings.telegram)||'https://t.me/movie_box00',telegramSupport:(D.settings&&D.settings.telegramSupport)||(D.settings&&D.settings.telegram)||'https://t.me/movie_box00',authSupport:(D.settings&&D.settings.authSupport)||(D.settings&&D.settings.telegramSupport)||(D.settings&&D.settings.telegram)||'https://t.me/movie_box00',upiOpenApp:D.settings&&D.settings.upiOpenApp!==false,homeImages:Array.isArray(D.settings&&D.settings.homeImages)?D.settings.homeImages:[],offers:Array.isArray(D.settings&&D.settings.offers)?D.settings.offers:[],referContent:(D.settings&&D.settings.referContent)||{},paySlot:pick,...(a.upi?{upi:a.upi,payee:a.payee}:{}),...(a.qr?{qr:a.qr}:{})};
+ const cfg={referralDiscountPct:referralDiscountPct(),referralDiscountEnabled:D.settings.referralDiscountEnabled!==false,adminDemo:u.admin?(D.adminDemo||{balance:0,earned:0,referrals:0,withdrawals:0}):undefined,minWd:C.minWd,minDirectRefs:C.minDirectRefs,withdrawalDay:C.withdrawalDay,commission:C.commission,level2:C.level2,level3:C.level3,dailyReward:C.dailyReward,taskReferral:C.taskReferral,taskReferralLevel2:C.taskReferralLevel2,price:C.price,disc:C.disc,fee:C.fee,offerEnd:C.offerEnd,offerOn:offerOnNow(),paymentMode:(D.settings&&D.settings.paymentMode)==='qr'?'qr':'razorpay',razorpayEnabled:razorpayReady(),razorpayKeyId:RZP_KEY,telegramJoin:(D.settings&&D.settings.telegramJoin)||(D.settings&&D.settings.telegram)||'https://t.me/movie_box00',telegramSupport:(D.settings&&D.settings.telegramSupport)||(D.settings&&D.settings.telegram)||'https://t.me/movie_box00',authSupport:(D.settings&&D.settings.authSupport)||(D.settings&&D.settings.telegramSupport)||(D.settings&&D.settings.telegram)||'https://t.me/movie_box00',upiOpenApp:D.settings&&D.settings.upiOpenApp!==false,homeImages:Array.isArray(D.settings&&D.settings.homeImages)?D.settings.homeImages:[],offers:Array.isArray(D.settings&&D.settings.offers)?D.settings.offers:[],referContent:(D.settings&&D.settings.referContent)||{},paySlot:pick,...(a.upi?{upi:a.upi,payee:a.payee}:{}),...(a.qr?{qr:a.qr}:{})};
  if(u.admin){
  const cut=+D.adminPanelResetAt||0;
  const realIds=new Set(D.users.filter(x=>!x.admin&&!x.managedAccount).map(x=>x.id));
@@ -239,22 +241,53 @@ const R={
   if(!razorpayReady())return bad(res,'Razorpay is not configured on the server',503);
   ensureTaskLockTimestamp(u);
   if(hasBlockingPayment(u))return bad(res,'You already have a payment in progress or verified');
-  const createdAt=Date.now(),amount=Math.round(payTotal()*100),receipt=('RK-'+u.id+'-'+createdAt).slice(0,40);
+  const createdAt=Date.now(),total=payTotalFor(u),amount=Math.round(total*100),receipt=('RK-'+u.id+'-'+createdAt).slice(0,40);
   let order;try{order=await rzpFetch('POST','orders',{amount,currency:'INR',receipt,notes:{user_id:u.id,task_lock_at:String(u.taskLockedAt||0)}})}catch(e){return bad(res,e.message,502)}
   if(!order||!order.id)return bad(res,'Could not create Razorpay order',502);
-  const p={id:rid(),uid:u.id,amt:payTotal(),slot:-1,qrId:'razorpay',utr:'',status:'Pending Verification',ts:createdAt,razorpayOrderId:order.id,razorpayReceipt:receipt};
+  const p={id:rid(),uid:u.id,amt:total,baseAmt:C.price,fee:C.fee,discount:Math.max(0,Math.round((C.price+C.fee-total)*100)/100),referrerId:u.refBy||null,discountPct:(u.refBy&&D.settings.referralDiscountEnabled!==false)?referralDiscountPct():0,slot:-1,qrId:'razorpay',utr:'',status:'Pending Verification',ts:createdAt,razorpayOrderId:order.id,razorpayReceipt:receipt};
   D.pays.push(p);D.qrStats=D.qrStats||{};D.qrStats.razorpay=D.qrStats.razorpay||{submitted:0,verified:0,people:[],amount:0,verifiedAmount:0,created:Date.now()};
   const st=D.qrStats.razorpay;st.submitted++;st.amount+=p.amt;if(!st.people.includes(u.id))st.people.push(u.id);save();
-  send(res,200,{ok:1,orderId:order.id,amount,amountInr:p.amt,keyId:RZP_KEY,name:u.name,email:u.email,paymentId:p.id});
+  send(res,200,{ok:1,orderId:order.id,amount,amountInr:p.amt,baseAmount:C.price,discount:p.discount,discountPct:p.discountPct,fee:C.fee,keyId:RZP_KEY,name:u.name,email:u.email,paymentId:p.id});
+ },
+ async 'razorpay/status'(r,res,b,u){
+  const oid=str(b.razorpay_order_id,80);
+  const p=D.pays.find(x=>x.uid===u.id&&x.razorpayOrderId===oid);
+  if(!p)return bad(res,'Payment order not found',404);
+  if(p.status==='Verified')return send(res,200,{ok:1,status:'Verified',verified:true,taskUnlocked:!u.taskLocked});
+  if(!razorpayReady())return send(res,200,{ok:1,status:p.status,verified:false,canRetry:['Cancelled','Failed','Rejected'].includes(p.status)});
+  try{
+   const result=await rzpFetch('GET','orders/'+encodeURIComponent(oid)+'/payments');
+   const items=Array.isArray(result.items)?result.items:[];
+   const captured=items.find(x=>x.status==='captured'&&x.order_id===oid&&+x.amount===Math.round(p.amt*100)&&x.currency==='INR');
+   if(captured){markRazorpayVerified(p,captured.id);unlockForFreshPayment(p);save();return send(res,200,{ok:1,status:'Verified',verified:true,taskUnlocked:!u.taskLocked})}
+   const active=items.some(x=>['created','authorized'].includes(x.status));
+   const failed=items.length>0&&items.every(x=>['failed'].includes(x.status));
+   if(failed){p.status='Failed';p.updated=Date.now();p.failureReason='Razorpay reports all attempts failed';save()}
+   else if(!active&&p.status==='Pending Verification'&&p.cancelRequested){p.status='Cancelled';p.updated=Date.now();save()}
+   send(res,200,{ok:1,status:p.status,verified:false,canRetry:['Cancelled','Failed','Rejected'].includes(p.status)||p.status==='Pending Verification'&&!active});
+  }catch(e){send(res,200,{ok:1,status:p.status,verified:false,canRetry:['Cancelled','Failed','Rejected'].includes(p.status),checkLater:true})}
  },
  async 'razorpay/cancel'(r,res,b,u){
   const oid=str(b.razorpay_order_id,80);
   if(!oid)return bad(res,'Invalid Razorpay order');
   const p=D.pays.find(x=>x.uid===u.id&&x.razorpayOrderId===oid);
   if(!p)return bad(res,'Payment order not found',404);
-  if(p.status==='Verified')return send(res,200,{ok:1,verified:true});
-  if(p.status==='Pending Verification'){p.status='Cancelled';p.updated=Date.now();p.cancelledAt=Date.now();save();}
-  send(res,200,{ok:1,cancelled:p.status==='Cancelled'});
+  if(p.status==='Verified')return send(res,200,{ok:1,verified:true,status:'Verified'});
+  p.cancelRequested=true;p.cancelRequestedAt=Date.now();
+  // Reconcile with Razorpay before releasing a payment lock; never assume a payment failed from a browser callback alone.
+  if(razorpayReady()){
+   try{
+    const result=await rzpFetch('GET','orders/'+encodeURIComponent(oid)+'/payments');
+    const items=Array.isArray(result.items)?result.items:[];
+    const captured=items.find(x=>x.status==='captured'&&x.order_id===oid&&+x.amount===Math.round(p.amt*100)&&x.currency==='INR');
+    if(captured){markRazorpayVerified(p,captured.id);unlockForFreshPayment(p);save();return send(res,200,{ok:1,verified:true,status:'Verified'})}
+    const active=items.some(x=>['created','authorized'].includes(x.status));
+    if(items.length&&items.every(x=>x.status==='failed'))p.status='Failed';
+    else if(!active)p.status='Cancelled';
+   }catch(e){/* Keep status pending if Razorpay cannot be reached; the status checker can retry safely. */}
+  }else if(p.status==='Pending Verification')p.status='Cancelled';
+  p.updated=Date.now();save();
+  send(res,200,{ok:1,cancelled:['Cancelled','Failed'].includes(p.status),status:p.status,canRetry:['Cancelled','Failed','Rejected'].includes(p.status)});
  },
  async 'razorpay/confirm'(r,res,b,u){
   if(!razorpayReady())return bad(res,'Razorpay is not configured on the server',503);
@@ -280,7 +313,7 @@ const R={
   if(D.pays.some(p=>String(p.utr||'').toLowerCase()===utr.toLowerCase()&&p.status!=='Rejected'))return bad(res,'This UTR has already been submitted');
   const ps=paySlots(),slot=ps.slots[slotNo];
   if(!slot||!slot.qr||!slot.upi)return bad(res,'This QR is not configured. Please refresh and try again.');
-  const p={id:rid(),uid:u.id,amt:payTotal(),slot:slotNo,qrId:slot.qid,utr,status:'Pending Verification',ts:Date.now(),paymentMethod:'qr'};
+  const total=payTotalFor(u);const p={id:rid(),uid:u.id,amt:total,baseAmt:C.price,fee:C.fee,discount:Math.max(0,Math.round((C.price+C.fee-total)*100)/100),referrerId:u.refBy||null,discountPct:(u.refBy&&D.settings.referralDiscountEnabled!==false)?referralDiscountPct():0,slot:slotNo,qrId:slot.qid,utr,status:'Pending Verification',ts:Date.now(),paymentMethod:'qr'};
   D.pays.push(p);D.qrStats=D.qrStats||{};const st=D.qrStats[slot.qid]||(D.qrStats[slot.qid]={submitted:0,verified:0,people:[],amount:0,verifiedAmount:0,created:Date.now()});st.submitted=(+st.submitted||0)+1;st.amount=(+st.amount||0)+p.amt;st.people=Array.isArray(st.people)?st.people:[];if(!st.people.includes(u.id))st.people.push(u.id);save();send(res,200,{ok:1,payment:{id:p.id,status:p.status,amount:p.amt}})
  },
  async wd(r,res,b,u){const a=Math.floor(+b.amount),up=str(b.upi,60),demo=!!u.managedAccount,direct=D.users.filter(x=>x.refBy===u.id&&D.pays.some(p=>p.uid===x.id&&p.status==='Verified')).length;
@@ -392,6 +425,7 @@ const R={
   const taskUnlocked=!!t.admin||!!(t&&!t.taskLocked&&(t.managedAccount||t.demo||t.adminVerified||verified));
   send(res,200,{ok:1,uid:t.id,name:str(t.name,60)||'Referral user',level:found.level,taskUnlocked,paymentStatus:verified?'Verified':D.pays.some(p=>p.uid===t.id&&p.status==='Pending Verification')?'Pending verification':'Not verified'});
  },
+ async 'admin/referral-discount'(r,res,b,u){if(!u.admin)return bad(res,'Forbidden',403);const pct=Number(b.percent);if(!Number.isFinite(pct)||pct<0||pct>100)return bad(res,'Discount must be between 0% and 100%');D.settings=D.settings||{};D.settings.referralDiscountPct=pct;D.settings.referralDiscountEnabled=b.enabled!==false;save();send(res,200,{ok:1,percent:D.settings.referralDiscountPct,enabled:D.settings.referralDiscountEnabled})},
  async 'admin/business-config'(r,res,b,u){if(!u.admin)return bad(res,'Forbidden',403);const num=(v,max=1000000)=>{const n=Number(v);return Number.isFinite(n)&&n>=0&&n<=max?n:null};const price=num(b.price),fee=num(b.fee),minWd=num(b.minWd),minDirectRefs=num(b.minDirectRefs,100000),withdrawalDay=String(b.withdrawalDay??'0');if([price,fee,minWd,minDirectRefs].some(x=>x===null)||!Number.isInteger(minDirectRefs))return bad(res,'Enter valid amounts and a whole-number referral requirement');if(!(withdrawalDay==='any'||/^[0-6]$/.test(withdrawalDay)))return bad(res,'Choose a valid withdrawal day');const vals={price,fee,minWd,minDirectRefs,withdrawalDay:withdrawalDay==='any'?'any':Number(withdrawalDay)};D.settings=D.settings||{};D.settings.businessConfig=vals;Object.assign(C,vals);save();send(res,200,{ok:1,businessConfig:vals})},
  async 'admin/rewards'(r,res,b,u){if(!u.admin)return bad(res,'Forbidden',403);const keys=['commission','level2','level3','dailyReward','taskReferral','taskReferralLevel2'];const vals={};for(const k of keys){const n=Number(b[k]);if(!Number.isFinite(n)||n<0||n>1000000)return bad(res,'Enter valid reward amounts (₹0–₹1,000,000)');vals[k]=n}D.settings=D.settings||{};D.settings.rewardConfig=vals;Object.assign(C,vals);save();send(res,200,{ok:1,rewards:vals})},
  async 'admin/refer-content'(r,res,b,u){if(!u.admin)return bad(res,'Forbidden',403);const fields=['intro','shareHint','levelsTitle','rulesTitle','rules','historyTitle'];const out={};for(const k of fields){if(typeof b[k]!=='string'||b[k].length>(k==='rules'?3000:500))return bad(res,'Invalid referral page text');out[k]=b[k].trim()}D.settings=D.settings||{};D.settings.referContent=out;save();send(res,200,{ok:1,referContent:out})},
