@@ -18,28 +18,27 @@ const adminStats=()=>{
  const v=D.pays.filter(p=>p.status==='Verified');
  return {verifiedCount:Math.max(0,v.length-(+b.verifiedCount||0)),revenue:Math.max(0,v.reduce((s,p)=>s+(+p.amt||0),0)-(+b.verifiedAmount||0))};
 };
-// Storage: Supabase Postgres with safe one-time import from legacy Upstash.
-const UT=(E.UPSTASH_REDIS_REST_TOKEN||'').trim().replace(/^['"]|['"]$/g,''), UU0=(E.UPSTASH_REDIS_REST_URL||'').trim().replace(/^['"]|['"]$/g,''), UU=UU0&&(/^https?:\/\//.test(UU0)?UU0:'https://'+UU0), KEY=(E.UPSTASH_REDIS_KEY||'referkaro_data').trim()||'referkaro_data';
-const SU=(E.SUPABASE_URL||'').trim().replace(/\/$/,'').replace(/^['"]|['"]$/g,''), SK=(E.SUPABASE_SERVICE_ROLE_KEY||E.SUPABASE_SECRET_KEY||'').trim().replace(/^['"]|['"]$/g,''), TABLE=(E.SUPABASE_TABLE||'app_state').trim()||'app_state', ROW_ID=(E.SUPABASE_ROW_ID||'referkaro_main').trim()||'referkaro_main';
+// Storage: Supabase Postgres only. Upstash is intentionally not used by this build.
+const SU=(E.SUPABASE_URL||'').trim().replace(/\/$/,'').replace(/^['\"]|['\"]$/g,''), SK=(E.SUPABASE_SERVICE_ROLE_KEY||E.SUPABASE_SECRET_KEY||'').trim().replace(/^['\"]|['\"]$/g,''), TABLE=(E.SUPABASE_TABLE||'app_state').trim()||'app_state', ROW_ID=(E.SUPABASE_ROW_ID||'referkaro_main').trim()||'referkaro_main';
 const supabaseConfigured=!!(SU&&SK);
-const up=async cmd=>{const r=await fetch(UU,{method:'POST',headers:{Authorization:'Bearer '+UT,'Content-Type':'application/json'},body:JSON.stringify(cmd)});const j=await r.json();if(!r.ok||j.error)throw new Error(j.error||('Upstash HTTP '+r.status));return j.result};
 const sbHeaders={'apikey':SK,'Authorization':'Bearer '+SK,'Content-Type':'application/json'};
 const sbRead=async()=>{const r=await fetch(SU+'/rest/v1/'+encodeURIComponent(TABLE)+'?id=eq.'+encodeURIComponent(ROW_ID)+'&select=data',{headers:sbHeaders});const t=await r.text();if(!r.ok)throw new Error('Supabase read HTTP '+r.status+': '+t.slice(0,300));const rows=JSON.parse(t||'[]');return rows.length?rows[0].data:null};
 const sbWrite=async data=>{const r=await fetch(SU+'/rest/v1/'+encodeURIComponent(TABLE)+'?on_conflict=id',{method:'POST',headers:{...sbHeaders,'Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({id:ROW_ID,data,updated_at:new Date().toISOString()})});const t=await r.text();if(!r.ok)throw new Error('Supabase save HTTP '+r.status+': '+t.slice(0,300))};
 let dirty=false,flushing=false;
-async function flush(){if(flushing)return;flushing=true;let failed=false;try{while(dirty){dirty=false;const snapshot=JSON.parse(JSON.stringify(D));if(supabaseConfigured)await sbWrite(snapshot);else if(UU&&UT)await up(['SET',KEY,JSON.stringify(snapshot)]);else throw new Error('No persistent database configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.')}}catch(e){console.error('Persistent database save failed:',e.message);dirty=true;failed=true}finally{flushing=false;if(dirty&&!failed)queueMicrotask(()=>flush())}}
-const save=()=>{if(supabaseConfigured||(UU&&UT)){dirty=true;void flush()}else{try{fs.writeFileSync(FILE+'.tmp',JSON.stringify(D));fs.renameSync(FILE+'.tmp',FILE)}catch(e){console.error('Local data save failed:',e.message);throw e}}};
+async function flush(){if(flushing)return;flushing=true;let failed=false;try{while(dirty){dirty=false;const snapshot=JSON.parse(JSON.stringify(D));if(!supabaseConfigured)throw new Error('Supabase storage is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');await sbWrite(snapshot)}}catch(e){console.error('Supabase save failed:',e.message);dirty=true;failed=true}finally{flushing=false;if(dirty&&!failed)queueMicrotask(()=>flush())}}
+const save=()=>{if(supabaseConfigured){dirty=true;void flush()}else{if(E.REQUIRE_PERSISTENT_STORAGE==='true')throw new Error('Persistent storage required: configure Supabase.');try{fs.writeFileSync(FILE+'.tmp',JSON.stringify(D));fs.renameSync(FILE+'.tmp',FILE)}catch(e){console.error('Local data save failed:',e.message);throw e}}};
 const rid=()=>crypto.randomBytes(4).toString('hex');
 const nid=()=>{let n;do{n=String(crypto.randomInt(10000000,100000000))}while(D.users.some(u=>u.id===n));return n};
 const hp=(p,s)=>crypto.scryptSync(p,s,64).toString('hex');
 const sha=t=>crypto.createHash('sha256').update(t).digest('hex');
 const same=(a,b)=>a.length===b.length&&crypto.timingSafeEqual(Buffer.from(a),Buffer.from(b));
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const phoneNorm=v=>{let n=String(v||'').replace(/\D/g,'');if(n.length===12&&n.startsWith('91'))n=n.slice(2);return /^\d{10}$/.test(n)?n:''};
 // ---- admin seed (from env; never hardcoded) ----
 async function init(){
- if(E.REQUIRE_PERSISTENT_STORAGE==='true'&&!supabaseConfigured&&(!UU||!UT))throw new Error('Persistent storage required: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
- if(supabaseConfigured){const saved=await sbRead();if(saved&&typeof saved==='object'){D={...D,...saved};console.log('Storage: Supabase')}else if(UU&&UT){const legacy=await up(['GET',KEY]);if(legacy){const parsed=JSON.parse(legacy);if(parsed&&typeof parsed==='object'){D={...D,...parsed};await sbWrite(D);console.log('Storage: Supabase (imported legacy Upstash data)')}}else{await sbWrite(D);console.log('Storage: Supabase (new database)')}}else{await sbWrite(D);console.log('Storage: Supabase (new database)')}}
- else if(UU&&UT){const v=await up(['GET',KEY]);if(v)D={...D,...JSON.parse(v)};console.log('Storage: Upstash')}else{console.log('Storage: local JSON file (not recommended for production)')}
+ if(E.REQUIRE_PERSISTENT_STORAGE==='true'&&!supabaseConfigured)throw new Error('Persistent storage required: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY. This build uses Supabase only.');
+ if(supabaseConfigured){const saved=await sbRead();if(saved&&typeof saved==='object'&&!Array.isArray(saved)){D={...D,...saved};console.log('Storage: Supabase ('+TABLE+', row '+ROW_ID+')')}else if(E.ALLOW_EMPTY_SUPABASE_INIT==='true'){await sbWrite(D);console.log('Storage: Supabase (initialized empty row; explicit opt-in)')}else{throw new Error('Supabase row not found or invalid: '+TABLE+' id='+ROW_ID+'. To protect existing data, startup stopped instead of creating an empty state. Verify SUPABASE_TABLE/SUPABASE_ROW_ID and existing row. Only for a genuinely new empty project, set ALLOW_EMPTY_SUPABASE_INIT=true for the first start.')}}
+ else{console.log('Storage: local JSON file (development only; not recommended for production)')}
 
  // Re-apply saved admin configuration after loading persistent Redis data.
  if(D.settings&&D.settings.rewardConfig){for(const k of ['commission','level2','level3','dailyReward','taskReferral','taskReferralLevel2']){const n=Number(D.settings.rewardConfig[k]);if(Number.isFinite(n)&&n>=0&&n<=1000000)C[k]=n}}
@@ -145,7 +144,7 @@ const use=u=>{const d=day();if(!u.use||u.use.day!==d)u.use={day:d,secs:0,msgs:0,
 const AIS=+E.AI_SECONDS||600;
 function stat(u){const x=use(u);if(x.start&&x.secs<AIS){x.secs=Math.min(AIS,(Date.now()-x.start)/1000);if(x.secs>=AIS){u.done=u.done||[];if(!u.done.includes(x.day))u.done.push(x.day);save()}}return x}
 const aiInfo=u=>{const x=stat(u);return{secs:Math.floor(x.secs),goal:AIS,running:!!x.start&&x.secs<AIS,done:(u.done||[]).length,on:!!E.ANTHROPIC_API_KEY}};
-const pub=u=>({blocked:!!u.blocked,taskLocked:!!u.taskLocked,ai:aiInfo(u),id:u.id,email:u.email,name:u.name,ref:u.ref,refBy:u.refBy,created:u.created,delReq:!!u.delReq,progress:u.progress||{},admin:!!u.admin,adminVerified:!!u.adminVerified,managedAccount:!!u.managedAccount,demoStats:u.managedAccount?(u.demoStats||{balance:0,earned:0,referrals:0,withdrawals:0}):undefined,wallet:walletData(u)});
+const pub=u=>({blocked:!!u.blocked,taskLocked:!!u.taskLocked,ai:aiInfo(u),id:u.id,email:u.email,phone:u.phone||'',name:u.name,ref:u.ref,refBy:u.refBy,created:u.created,delReq:!!u.delReq,progress:u.progress||{},admin:!!u.admin,adminVerified:!!u.adminVerified,managedAccount:!!u.managedAccount,demoStats:u.managedAccount?(u.demoStats||{balance:0,earned:0,referrals:0,withdrawals:0}):undefined,wallet:walletData(u)});
 const paySlots=()=>{const p=D.pay||{};let slots=Array.isArray(p.slots)?p.slots.slice():[];if(!slots.length&&p.upi)slots=[{qid:'legacy-1',upi:p.upi,payee:p.payee,qr:p.qr||''}];slots.forEach((x,i)=>{if(x&&!x.qid)x.qid='qr-'+rid()});D.pay=D.pay||{};D.pay.slots=slots;D.qrStats=D.qrStats||{};slots.forEach(x=>{if(x&&!D.qrStats[x.qid])D.qrStats[x.qid]={submitted:0,verified:0,people:[],amount:0,verifiedAmount:0,created:Date.now()}});return{slots,active:Number.isInteger(p.active)?Math.max(0,Math.min(Math.max(0,slots.length-1),p.active)):0}};
 const qrStatsView=()=>{const ps=paySlots(),out={};for(const [qid,x] of Object.entries(D.qrStats||{}))out[qid]={submitted:+x.submitted||0,verified:+x.verified||0,people:Array.isArray(x.people)?x.people.length:0,amount:+x.amount||0,verifiedAmount:+x.verifiedAmount||0,created:x.created||0};return{slots:ps.slots.map((x,i)=>({slot:i,qid:x.qid,upi:x.upi||'',payee:x.payee||'',active:i===ps.active,stats:out[x.qid]||{submitted:0,verified:0,people:0,amount:0,verifiedAmount:0}})),history:out}};
 const paymentChoice=()=>{const ps=paySlots(),ok=ps.slots.map((x,i)=>x&&x.upi&&x.qr?i:-1).filter(i=>i>=0);if(!ok.length)return -1;return ok[Math.floor(Math.random()*ok.length)]};
@@ -157,7 +156,7 @@ function state(u){const ps=paySlots(),pick=u.admin?ps.active:paymentChoice(),a=p
  const apays=D.pays.filter(p=>realIds.has(p.uid)&&(+p.ts||0)>=cut);
  const awd=D.wd.filter(w=>realIds.has(w.uid)&&(+w.ts||0)>=cut);
  const atix=D.tix.filter(t=>(+t.ts||0)>=cut);
- return{me:{...pub(u),task:taskView(u)},cfg,db:{users:D.users.map(x=>({...pub(x),managedAccount:!!x.managedAccount,demoStats:x.demoStats||null})),pays:apays,wd:awd,demoWd:D.wd.filter(w=>D.users.some(x=>x.id===w.uid&&x.managedAccount&&!x.admin)),tix:atix,daily:D.daily||{},storage:(supabaseConfigured?'supabase':(UU&&UT?'upstash':'file')),pay:paySlots(),qrStats:qrStatsView(),revenue:adminStats().revenue,adminStats:adminStats()}};
+ return{me:{...pub(u),task:taskView(u)},cfg,db:{users:D.users.map(x=>({...pub(x),managedAccount:!!x.managedAccount,demoStats:x.demoStats||null})),pays:apays,wd:awd,demoWd:D.wd.filter(w=>D.users.some(x=>x.id===w.uid&&x.managedAccount&&!x.admin)),tix:atix,daily:D.daily||{},storage:(supabaseConfigured?'supabase':'file'),pay:paySlots(),qrStats:qrStatsView(),revenue:adminStats().revenue,adminStats:adminStats()}};
 }
  const rf=D.users.filter(x=>x.refBy===u.id),ids=new Set(rf.map(x=>x.id));
  return{me:{...pub(u),task:ver(u)?taskView(u):null},cfg,db:{users:[pub(u),...rf.map(x=>({id:x.id,name:x.name,created:x.created,refBy:x.refBy}))],
@@ -209,15 +208,17 @@ const hasBlockingPayment=u=>D.pays.some(p=>p.uid===u.id&&(p.status==='Pending Ve
 function saveUploadData(data,prefix,maxBytes){if(!data)return '';const m=String(data).match(/^data:([^;]+);base64,([A-Za-z0-9+\/=]+)$/);if(!m)throw new Error('Invalid upload');const mime=m[1].toLowerCase(),buf=Buffer.from(m[2],'base64');if(buf.length>maxBytes)throw new Error('Upload is too large');const ext=({ 'video/mp4':'mp4','video/webm':'webm','video/ogg':'ogg','image/png':'png','image/jpeg':'jpg','image/webp':'webp' })[mime];if(!ext)throw new Error('Unsupported upload type');const name=prefix+'-'+crypto.randomBytes(6).toString('hex')+'.'+ext;fs.writeFileSync(path.join(UPLOAD_DIR,name),buf);return '/uploads/'+name}
 const R={
  async register(r,res,b){if(limited(r))return bad(res,'Too many attempts. Try later.',429);
-  const e=str(b.email).toLowerCase(),n=str(b.name,60),p=str(b.password,100);
-  if(!EMAIL.test(e))return bad(res,'Enter a valid email address');if(!n)return bad(res,'Enter your name');if(p.length<8)return bad(res,'Password must be at least 8 characters');
+  const e=str(b.email).toLowerCase(),phone=phoneNorm(b.phone),n=str(b.name,60),p=str(b.password,100);
+  if(!EMAIL.test(e))return bad(res,'Enter a valid email address');if(!phone)return bad(res,'Enter a valid 10-digit Indian mobile number');if(!n)return bad(res,'Enter your name');if(p.length<8)return bad(res,'Password must be at least 8 characters');
   if(D.users.some(u=>u.email===e))return bad(res,'This email is already registered. Please login.',409);
+  if(D.users.some(u=>phoneNorm(u.phone)===phone))return bad(res,'This mobile number is already registered. Only one account per number is allowed.',409);
   const by=D.users.find(u=>u.ref===str(b.ref,12).toUpperCase()),s=rid()+rid();
-  const u={id:nid(),email:e,name:n,salt:s,hash:hp(p,s),ref:rid().toUpperCase().slice(0,6),refBy:by?by.id:null,created:Date.now(),progress:{}};
+  const u={id:nid(),email:e,phone,name:n,salt:s,hash:hp(p,s),ref:rid().toUpperCase().slice(0,6),refBy:by?by.id:null,created:Date.now(),progress:{}};
   D.users.push(u);save();startSession(res,u);send(res,200,{ok:1})},
  async login(r,res,b){if(limited(r))return bad(res,'Too many attempts. Try later.',429);
-  const u=D.users.find(x=>x.email===str(b.email).toLowerCase());
-  if(!u||!same(hp(str(b.password,100),u.salt),u.hash))return bad(res,'Incorrect email or password',401);if(u.blocked)return bad(res,'Your account is blocked. Please contact support.',403);startSession(res,u);send(res,200,{ok:1})},
+  const identifier=str(b.email||b.identifier,180).trim().toLowerCase(),phone=phoneNorm(identifier);
+  const u=identifier.includes('@')?D.users.find(x=>x.email===identifier):D.users.find(x=>phone&&phoneNorm(x.phone)===phone);
+  if(!u||!same(hp(str(b.password,100),u.salt),u.hash))return bad(res,'Incorrect email/mobile number or password',401);if(u.blocked)return bad(res,'Your account is blocked. Please contact support.',403);startSession(res,u);send(res,200,{ok:1})},
  async logout(r,res){const t=ck(r);if(t){delete D.sessions[sha(t)];save()}res.setHeader('Set-Cookie','sid=; HttpOnly; Path=/; Max-Age=0');send(res,200,{ok:1})},
  async forgot(r,res,b){if(limited(r))return bad(res,'Too many attempts. Try later.',429);
   const e=str(b.email).toLowerCase(),u=D.users.find(x=>x.email===e);
@@ -414,5 +415,5 @@ const srv=http.createServer(async(req,res)=>{
 });
 init().then(()=>srv.listen(PORT,()=>console.log('Running on',APP_URL))).catch(e=>{
  console.error('\n=== STARTUP ERROR ===');console.error(e.message,e.cause?('('+(e.cause.code||e.cause.message)+')'):'');
- console.error('Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY, and ensure public.app_state has id TEXT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ. Legacy Upstash variables are optional after migration.');process.exit(1)});
+ console.error('Check SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_TABLE and SUPABASE_ROW_ID. The configured table must contain the existing state row with id TEXT PRIMARY KEY and data JSONB. This build never reads or writes Upstash.');process.exit(1)});
 process.on('SIGTERM',async()=>{await flush();process.exit(0)});

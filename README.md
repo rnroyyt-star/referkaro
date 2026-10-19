@@ -1,44 +1,63 @@
-# Refer Karo
+# ReferKaro
 
-Node.js website with a built-in HTTP server. Requires Node.js 18.18 or newer. The app does not need Express or other npm runtime packages.
+Node.js website with a built-in HTTP server. Requires Node.js 18.18 or newer. No runtime npm dependencies are required.
 
-## Before deploying to Railway
+## Hostinger + Supabase (Supabase-only build)
 
-1. Push these files to your GitHub repository: `server.js`, `index.html`, `content.json`, `package.json`, and `README.md`.
-2. In Railway, open the **referkro service** (not Project Settings) and add the variables below under **Variables**.
-3. Create an Upstash Redis database and use its **REST URL** and **REST token**. Do not use a `redis://` or `rediss://` connection string.
-4. Generate a public domain in the service's **Settings → Networking**.
-5. Set `APP_URL` to the full public URL, including `https://`.
-6. Deploy and check `/health` and the logs before testing login, payment, referral, and withdrawal flows.
+This ZIP intentionally **does not read or write Upstash Redis**. The app's persistent state is stored as one JSON document in `public.app_state`, row `id = referkaro_main` by default.
 
-## Required Railway variables
+### Required Hostinger environment variables
 
 | Variable | Value |
 | --- | --- |
-| `ADMIN_EMAIL` | Your own admin email, lower-case recommended |
-| `ADMIN_PASSWORD` | A unique, strong admin password (at least 12 characters recommended) |
-| `UPSTASH_REDIS_REST_URL` | Upstash database REST URL beginning with `https://` |
-| `UPSTASH_REDIS_REST_TOKEN` | Full Upstash REST token; keep secret |
-| `REQUIRE_PERSISTENT_STORAGE` | `true` to prevent startup without persistent database configuration |
-| `APP_URL` | Your deployed public URL, e.g. `https://your-app.up.railway.app` |
+| `SUPABASE_URL` | Your Supabase project URL, e.g. `https://PROJECT.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-side Supabase secret/service key; never put it in browser code or GitHub |
+| `SUPABASE_TABLE` | `app_state` (optional; default `app_state`) |
+| `SUPABASE_ROW_ID` | `referkaro_main` (optional; default `referkaro_main`) |
+| `REQUIRE_PERSISTENT_STORAGE` | `true` |
+| `APP_URL` | Your full public website URL including `https://` |
+| `ADMIN_EMAIL` | Your admin email, lower-case recommended |
+| `ADMIN_PASSWORD` | Unique strong admin password; required for production admin creation |
+| `NODE_ENV` | `production` |
 
 Optional variables:
 
-- `UPSTASH_REDIS_KEY`: custom Redis key; default is `referkaro_data`. Use a different key for staging and production if they share a database.
-- `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`: required for Razorpay mode. Configure the webhook URL as `https://YOUR-DOMAIN/api/razorpay/webhook` and subscribe to `payment.captured` (and/or `order.paid`). Test in Razorpay test mode first.
-- `RESEND_API_KEY`, `MAIL_FROM`: required for actual password-reset email delivery. Without these, reset codes are only written to server logs; do not use that fallback in production.
+- `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`: required for Razorpay mode. Configure webhook URL as `https://YOUR-DOMAIN/api/razorpay/webhook` and test in Razorpay test mode first.
+- `RESEND_API_KEY`, `MAIL_FROM`: needed for real password-reset email delivery.
 - `ANTHROPIC_API_KEY`, `AI_MODEL`, `AI_DAILY_MSGS`: optional AI feature configuration.
-- `ENABLE_MANAGED_DEMO_ACCOUNTS=true`: explicitly enables creation of synthetic demo customer accounts. Leave unset for a real production launch.
+- `ENABLE_MANAGED_DEMO_ACCOUNTS=true`: explicitly enables synthetic demo accounts. Leave unset for production.
+- `ALLOW_EMPTY_SUPABASE_INIT=true`: **only** for the first start of a genuinely new empty project. Remove this variable immediately after that initial row is created. Never use it to fix a missing row in a database that already has production data.
 
-## Important production notes
+### Required Supabase schema
 
-- Persistent storage is essential. The local `data.json` fallback is for local development only; many hosting platforms use ephemeral filesystems. Set `REQUIRE_PERSISTENT_STORAGE=true` in Railway and configure Upstash before serving real users.
-- Upstash stores the app's user/payment state as one JSON value. Back up the database before deploying changes and test restoring a backup. Keep production and staging on separate Redis keys or databases.
-- Never commit passwords, Redis tokens, Razorpay secrets, or API keys to GitHub. Set them only in Railway Variables.
-- Use Razorpay test mode first. The code cannot verify live provider account settings, webhook delivery, or legal/payment-provider eligibility by itself.
-- The default task links in `content.json` are blank. Configure valid links/tasks through the admin panel before making daily tasks available.
-- Change the default Telegram/support links in Admin Settings before launch.
-- This project includes money/reward/withdrawal features. Verify applicable laws, payment-provider rules, terms, privacy policy, refund policy, and payout operations before accepting real customers.
+Run in Supabase SQL Editor if the table does not already exist:
+
+```sql
+CREATE TABLE IF NOT EXISTS public.app_state (
+  id TEXT PRIMARY KEY,
+  data JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE public.app_state ENABLE ROW LEVEL SECURITY;
+```
+
+### Deploy safely
+
+1. Download/retain a backup of the current project and the app's admin backup JSON before deployment.
+2. Confirm the existing state row is `public.app_state` with `id = referkaro_main` (or set `SUPABASE_ROW_ID` to the exact existing row ID). Do not guess this value.
+3. Add the required Supabase variables in Hostinger. Keep the service key server-side only.
+4. Upload this ZIP, install dependencies if Hostinger asks (there are no runtime dependencies), and restart the Node app.
+5. Check startup logs. They should say `Storage: Supabase (app_state, row referkaro_main)`. If the row is missing or invalid, startup deliberately stops rather than silently creating an empty state.
+6. Test login with an existing email and mobile number, registration, admin panel, referral/balance totals, payment history, QR settings, withdrawals, task progress, and a harmless setting change. Restart and verify the change remains.
+7. Only after those checks pass, remove `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, and `UPSTASH_REDIS_KEY` from Hostinger. This ZIP ignores them already, so they are not needed at runtime.
+
+### Important storage behavior
+
+- This build reads/writes only the configured Supabase row when Supabase credentials are configured.
+- If the row is missing, the app fails closed by default. It does not create a blank row that could make existing data appear lost.
+- For local development only, if Supabase is not configured and `REQUIRE_PERSISTENT_STORAGE` is not `true`, state is saved to `data.json`. Do not use local-file storage for production.
+- State is stored as a whole JSON document. Run one production app instance while using this storage design to reduce the risk of concurrent whole-document overwrites.
+- This does not migrate files from a local `uploads/` folder. Verify upload persistence separately if the app uses uploads in production.
 
 ## Local development
 
@@ -46,17 +65,19 @@ Optional variables:
 npm start
 ```
 
-Then open `http://localhost:3000`. For local development, the app can use a local `data.json` file. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` before starting to create the admin account.
+Open `http://localhost:3000`. Local development can use `data.json` if Supabase is not configured. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` to seed an admin account.
 
-## Health check
+## Checks
+
+```bash
+npm test
+```
 
 `GET /health` returns `ok` when the server is running.
 
+## Production reminders
 
-## Hostinger + Supabase storage migration
-Set Hostinger environment variables `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (server-side secret only; never put it in `index.html`). The app stores its complete state in `public.app_state` at row id `referkaro_main`. Required schema:
-```sql
-CREATE TABLE IF NOT EXISTS public.app_state (id TEXT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
-ALTER TABLE public.app_state ENABLE ROW LEVEL SECURITY;
-```
-On first start, if the Supabase row is empty and legacy Upstash variables remain configured, the server imports the existing Upstash state into Supabase. Keep Upstash variables for that first deployment and verify logs show `Storage: Supabase (imported legacy Upstash data)` or `Storage: Supabase`. Check users, payments, referrals, withdrawals, and dashboard figures before removing Upstash variables. If Supabase has no row and Upstash is not configured, the app starts with empty state; do not deploy in that condition when existing data matters.
+- Never commit service keys, passwords, Razorpay secrets, or API keys to GitHub.
+- Test Razorpay with test credentials before live use. Live payment capture, webhook delivery, refunds, and payouts must be verified in the provider dashboard.
+- Configure valid task links and correct Telegram/support links in admin settings before launch.
+- Review applicable laws, payment-provider rules, terms, privacy policy, refund policy, and payout operations before accepting real customers.
