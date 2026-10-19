@@ -1,6 +1,5 @@
 // Refer Karo backend. Zero dependencies (Node 18+). Run: node server.js
 const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto');
-const { createClient } = require('@supabase/supabase-js');
 const E=process.env,PORT=+E.PORT||3000,FILE=E.DATA_FILE||path.join(__dirname,'data.json');
 const APP_URL=(E.APP_URL||'http://localhost:'+PORT).replace(/\/$/,'');
 const UPLOAD_DIR=path.join(__dirname,'uploads');try{fs.mkdirSync(UPLOAD_DIR,{recursive:true})}catch{}
@@ -19,19 +18,12 @@ const adminStats=()=>{
  const v=D.pays.filter(p=>p.status==='Verified');
  return {verifiedCount:Math.max(0,v.length-(+b.verifiedCount||0)),revenue:Math.max(0,v.reduce((s,p)=>s+(+p.amt||0),0)-(+b.verifiedAmount||0))};
 };
-// Storage priority: Supabase (if configured), then Upstash Redis, then local JSON file.
-const UT=(E.UPSTASH_REDIS_REST_TOKEN||'').trim().replace(/^['"]|['"]$/g,''),UU0=(E.UPSTASH_REDIS_REST_URL||'').trim().replace(/^['"]|['"]$/g,''),UU=UU0&&(/^https?:\/\//.test(UU0)?UU0:'https://'+UU0),KEY=(E.UPSTASH_REDIS_KEY||'referkaro_data').trim()||'referkaro_data';
-const SU=(E.SUPABASE_URL||E.SUPABASE_PROJECT_URL||'').trim().replace(/^['"]|['"]$/g,'');
-const SK=(E.SUPABASE_SERVICE_ROLE_KEY||E.SUPABASE_SECRET_KEY||'').trim().replace(/^['"]|['"]$/g,'');
-const ST=(E.SUPABASE_TABLE||'app_state').trim()||'app_state';
-const SI=(E.SUPABASE_ROW_ID||'referkaro_data').trim()||'referkaro_data';
-const supabaseConfigured=!!(SU&&SK);
-const supabase=supabaseConfigured?createClient(SU,SK,{auth:{persistSession:false,autoRefreshToken:false}}):null;
-const up=async cmd=>{const r=await fetch(UU,{method:'POST',headers:{Authorization:'Bearer '+UT,'Content-Type':'application/json'},body:JSON.stringify(cmd)});const j=await r.json();if(!r.ok||j.error)throw new Error(j.error||('Upstash HTTP '+r.status));return j.result};
+// Storage: Upstash Redis (free, survives restarts) if env vars set, else local JSON file.
+const UT=(E.UPSTASH_REDIS_REST_TOKEN||'').trim().replace(/^["']|["']$/g,''),UU0=(E.UPSTASH_REDIS_REST_URL||'').trim().replace(/^["']|["']$/g,''),UU=UU0&&(/^https?:\/\//.test(UU0)?UU0:'https://'+UU0),KEY=(E.UPSTASH_REDIS_KEY||'referkaro_data').trim()||'referkaro_data';
+const up=async cmd=>{const r=await fetch(UU,{method:'POST',headers:{Authorization:'Bearer '+UT},body:JSON.stringify(cmd)});const j=await r.json();if(j.error)throw new Error(j.error);return j.result};
 let dirty=false,flushing=false;
-async function writeSupabase(snapshot){const {error}=await supabase.from(ST).upsert({id:SI,data:JSON.parse(snapshot),updated_at:new Date().toISOString()},{onConflict:'id'});if(error)throw error;}
-async function flush(){if(flushing)return;flushing=true;let failed=false;try{while(dirty){dirty=false;const snapshot=JSON.stringify(D);if(supabaseConfigured)await writeSupabase(snapshot);else if(UU)await up(['SET',KEY,snapshot]);else{fs.writeFileSync(FILE+'.tmp',snapshot);fs.renameSync(FILE+'.tmp',FILE)}}}catch(e){console.error('Persistent database save failed:',e.message);dirty=true;failed=true}finally{flushing=false;/* Drain saves queued just as a flush finishes. */if(dirty&&!failed)queueMicrotask(()=>flush())}}
-const save=()=>{dirty=true;void flush()};
+async function flush(){if(flushing)return;flushing=true;let failed=false;try{while(dirty){dirty=false;const snapshot=JSON.stringify(D);await up(['SET',KEY,snapshot])}}catch(e){console.error('Persistent database save failed:',e.message);dirty=true;failed=true}finally{flushing=false;/* A save may arrive just as a flush finishes. Drain it without losing the update. */if(dirty&&!failed)queueMicrotask(()=>flush())}}
+const save=()=>{if(UU){dirty=true;void flush()}else{try{fs.writeFileSync(FILE+'.tmp',JSON.stringify(D));fs.renameSync(FILE+'.tmp',FILE)}catch(e){console.error('Local data save failed:',e.message);throw e}}};
 const rid=()=>crypto.randomBytes(4).toString('hex');
 const nid=()=>{let n;do{n=String(crypto.randomInt(10000000,100000000))}while(D.users.some(u=>u.id===n));return n};
 const hp=(p,s)=>crypto.scryptSync(p,s,64).toString('hex');
@@ -39,16 +31,7 @@ const sha=t=>crypto.createHash('sha256').update(t).digest('hex');
 const same=(a,b)=>a.length===b.length&&crypto.timingSafeEqual(Buffer.from(a),Buffer.from(b));
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 // ---- admin seed (from env; never hardcoded) ----
-async function init(){
- if(E.REQUIRE_PERSISTENT_STORAGE==='true'&&!supabaseConfigured&&(!UU||!UT))throw new Error('Persistent storage is required. Configure Supabase URL + service-role key, or Upstash REST URL + token.');
- if(supabaseConfigured){
-  const {data,error}=await supabase.from(ST).select('id,data').eq('id',SI).maybeSingle();
-  if(error)throw new Error('Supabase read failed. Create the app_state table using SUPABASE_SETUP.sql and verify the Supabase URL/service-role key. '+error.message);
-  if(data&&data.data&&typeof data.data==='object'){D={...D,...data.data};console.log('Storage: Supabase');}
-  else if(UU&&UT){const v=await up(['GET',KEY]);if(v){D={...D,...JSON.parse(v)};await writeSupabase(JSON.stringify(D));console.log('Storage: Supabase (migrated existing Upstash data; keep Upstash backup)');}else{await writeSupabase(JSON.stringify(D));console.log('Storage: Supabase (initialized new state)');}}
-  else{await writeSupabase(JSON.stringify(D));console.log('Storage: Supabase (initialized from local state)');}
- }else if(UU&&UT){const v=await up(['GET',KEY]);if(v)D={...D,...JSON.parse(v)};console.log('Storage: Upstash')}
- else if(E.NODE_ENV==='production')console.warn('WARNING: Persistent storage is not configured. Configure Supabase or Upstash before using production data.');
+async function init(){if(E.REQUIRE_PERSISTENT_STORAGE==='true'&&(!UU||!UT))throw new Error('Persistent storage is required. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN before deployment.');if((E.RAILWAY_ENVIRONMENT||E.RENDER||E.NODE_ENV==='production')&&(!UU||!UT))console.warn('WARNING: Persistent Upstash storage is not configured. Local-file data may be lost when the host redeploys or restarts. Configure UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN.');if(UU){const v=await up(['GET',KEY]);if(v)D={...D,...JSON.parse(v)};console.log('Storage: Upstash')}
  // Re-apply saved admin configuration after loading persistent Redis data.
  if(D.settings&&D.settings.rewardConfig){for(const k of ['commission','level2','level3','dailyReward','taskReferral','taskReferralLevel2']){const n=Number(D.settings.rewardConfig[k]);if(Number.isFinite(n)&&n>=0&&n<=1000000)C[k]=n}}
  if(D.settings&&D.settings.businessConfig){const b=D.settings.businessConfig;for(const k of ['price','fee','minWd']){const n=Number(b[k]);if(Number.isFinite(n)&&n>=0&&n<=1000000)C[k]=n}const refs=Number(b.minDirectRefs);if(Number.isInteger(refs)&&refs>=0&&refs<=100000)C.minDirectRefs=refs;const day=String(b.withdrawalDay??'0');if(day==='any'||/^[0-6]$/.test(day))C.withdrawalDay=day==='any'?'any':Number(day)}
@@ -165,7 +148,7 @@ function state(u){const ps=paySlots(),pick=u.admin?ps.active:paymentChoice(),a=p
  const apays=D.pays.filter(p=>realIds.has(p.uid)&&(+p.ts||0)>=cut);
  const awd=D.wd.filter(w=>realIds.has(w.uid)&&(+w.ts||0)>=cut);
  const atix=D.tix.filter(t=>(+t.ts||0)>=cut);
- return{me:{...pub(u),task:taskView(u)},cfg,db:{users:D.users.map(x=>({...pub(x),managedAccount:!!x.managedAccount,demoStats:x.demoStats||null})),pays:apays,wd:awd,demoWd:D.wd.filter(w=>D.users.some(x=>x.id===w.uid&&x.managedAccount&&!x.admin)),tix:atix,daily:D.daily||{},storage:UU?'upstash':'file',pay:paySlots(),qrStats:qrStatsView(),revenue:adminStats().revenue,adminStats:adminStats()}};
+ return{me:{...pub(u),task:taskView(u)},cfg,db:{users:D.users.map(x=>({...pub(x),managedAccount:!!x.managedAccount,demoStats:x.demoStats||null})),pays:apays,wd:awd,demoWd:D.wd.filter(w=>D.users.some(x=>x.id===w.uid&&x.managedAccount&&!x.admin)),tix:atix,daily:D.daily||{},storage:supabaseConfigured?'supabase':(UU&&UT?'upstash':'file'),pay:paySlots(),qrStats:qrStatsView(),revenue:adminStats().revenue,adminStats:adminStats()}};
 }
  const rf=D.users.filter(x=>x.refBy===u.id),ids=new Set(rf.map(x=>x.id));
  return{me:{...pub(u),task:ver(u)?taskView(u):null},cfg,db:{users:[pub(u),...rf.map(x=>({id:x.id,name:x.name,created:x.created,refBy:x.refBy}))],
@@ -422,5 +405,5 @@ const srv=http.createServer(async(req,res)=>{
 });
 init().then(()=>srv.listen(PORT,()=>console.log('Running on',APP_URL))).catch(e=>{
  console.error('\n=== STARTUP ERROR ===');console.error(e.message,e.cause?('('+(e.cause.code||e.cause.message)+')'):'');
- console.error('Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (and create the app_state table), or configure Upstash REST credentials.');process.exit(1)});
+ console.error('Set UPSTASH_REDIS_REST_URL to the HTTPS REST URL and UPSTASH_REDIS_REST_TOKEN to the full REST token. Do not use a redis:// or rediss:// connection URL.');process.exit(1)});
 process.on('SIGTERM',async()=>{await flush();process.exit(0)});
