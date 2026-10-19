@@ -148,7 +148,7 @@ function state(u){const ps=paySlots(),pick=u.admin?ps.active:paymentChoice(),a=p
  const apays=D.pays.filter(p=>realIds.has(p.uid)&&(+p.ts||0)>=cut);
  const awd=D.wd.filter(w=>realIds.has(w.uid)&&(+w.ts||0)>=cut);
  const atix=D.tix.filter(t=>(+t.ts||0)>=cut);
- return{me:{...pub(u),task:taskView(u)},cfg,db:{users:D.users.map(x=>({...pub(x),managedAccount:!!x.managedAccount,demoStats:x.demoStats||null})),pays:apays,wd:awd,demoWd:D.wd.filter(w=>D.users.some(x=>x.id===w.uid&&x.managedAccount&&!x.admin)),tix:atix,daily:D.daily||{},storage:supabaseConfigured?'supabase':(UU&&UT?'upstash':'file'),pay:paySlots(),qrStats:qrStatsView(),revenue:adminStats().revenue,adminStats:adminStats()}};
+ return{me:{...pub(u),task:taskView(u)},cfg,db:{users:D.users.map(x=>({...pub(x),managedAccount:!!x.managedAccount,demoStats:x.demoStats||null})),pays:apays,wd:awd,demoWd:D.wd.filter(w=>D.users.some(x=>x.id===w.uid&&x.managedAccount&&!x.admin)),tix:atix,daily:D.daily||{},storage:(UU&&UT?'upstash':'file'),pay:paySlots(),qrStats:qrStatsView(),revenue:adminStats().revenue,adminStats:adminStats()}};
 }
  const rf=D.users.filter(x=>x.refBy===u.id),ids=new Set(rf.map(x=>x.id));
  return{me:{...pub(u),task:ver(u)?taskView(u):null},cfg,db:{users:[pub(u),...rf.map(x=>({id:x.id,name:x.name,created:x.created,refBy:x.refBy}))],
