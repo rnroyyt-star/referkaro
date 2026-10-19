@@ -51,3 +51,12 @@ Then open `http://localhost:3000`. For local development, the app can use a loca
 ## Health check
 
 `GET /health` returns `ok` when the server is running.
+
+
+## Hostinger + Supabase storage migration
+Set Hostinger environment variables `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (server-side secret only; never put it in `index.html`). The app stores its complete state in `public.app_state` at row id `referkaro_main`. Required schema:
+```sql
+CREATE TABLE IF NOT EXISTS public.app_state (id TEXT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+ALTER TABLE public.app_state ENABLE ROW LEVEL SECURITY;
+```
+On first start, if the Supabase row is empty and legacy Upstash variables remain configured, the server imports the existing Upstash state into Supabase. Keep Upstash variables for that first deployment and verify logs show `Storage: Supabase (imported legacy Upstash data)` or `Storage: Supabase`. Check users, payments, referrals, withdrawals, and dashboard figures before removing Upstash variables. If Supabase has no row and Upstash is not configured, the app starts with empty state; do not deploy in that condition when existing data matters.
