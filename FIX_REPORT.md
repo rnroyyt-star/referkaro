@@ -54,3 +54,10 @@ This ZIP intentionally does not import from Upstash. Before deploying it, confir
 - `npm test` passes: server syntax, inline browser JavaScript syntax, existing registration/login/state smoke tests, and new feature tests.
 - Feature tests verify bonus reason/claim and duplicate-claim rejection, daily target count only after referral task unlock, target reward credit and duplicate protection, and admin UPI toggle propagation.
 - Live hosting/Supabase production data, real QR payment, UPI app handoff across devices, and payment provider credentials cannot be verified from this local ZIP. QR/UTR mode remains admin-manual verification; a UPI deep link does not itself verify payment.
+
+
+## Version 1.3.1 — Admin visibility correction (2026-10-21)
+- Added a dedicated Admin Panel tab: “Referral & Bonuses”.
+- This tab visibly lists each real user with direct actions to give a reasoned bonus, add cumulative daily targets, set a per-user referral discount, and review/cancel pending bonus or remove targets.
+- Added shortcuts to the existing global discount and Pay via UPI settings.
+- Re-ran the full automated test suite after the UI change.
