@@ -36,3 +36,21 @@ This ZIP intentionally does not import from Upstash. Before deploying it, confir
 - Existing direct referral commission on verified payments is retained as the referrer's reward. No old user/payment records were intentionally altered.
 - Validation run: `npm test` passed (server syntax, inline JS syntax, health/homepage/registration/duplicate phone/state/session/phone/email login smoke tests).
 - Not verified against live hosting or a live Razorpay/Supabase account in this environment. Test in staging and back up production Supabase data before deploying.
+
+## Version 1.3.0 — requested features and follow-up fixes (2026-10-21)
+
+### Added
+- Admin can issue a per-user bonus with an amount and required reason. It appears on that user's Home page as a claimable bonus; server-side claiming is one-time only. Pending bonuses can be cancelled, and the admin user card shows bonus history/status.
+- Added per-user daily referral target configuration. Admin can add/remove targets and choose each target's registration threshold and reward amount. Targets are cumulative (3, then 5 total, then 10 total); each has a separate claim. Eligible count includes only direct referrals registered on the current India-time date whose task access is unlocked, and excludes blocked/admin/demo accounts. Daily progress/claim eligibility rolls over automatically by date while claim history stays stored.
+- Connected the existing admin “Open UPI App” setting to the QR checkout as “Pay via UPI”. When enabled, the button launches a UPI URI with the configured UPI ID/payee and checkout amount prefilled. When disabled, the button is hidden and QR/manual UTR remains available.
+- Added claimed bonus and daily referral rewards to wallet earnings/history. Demo-account wallet totals are updated if these rewards are claimed by a managed demo account.
+
+### Fixes
+- Referral-page discount promo is hidden when the discount is disabled or no positive discount applies; it no longer shows an “admin has not set” placeholder.
+- Live refresh now notices pending bonuses, daily referral progress, and UPI/discount setting changes even when the main DB object itself has not changed.
+- Prevents duplicate claims server-side and keeps payment approval restricted to pending records.
+
+### Validation
+- `npm test` passes: server syntax, inline browser JavaScript syntax, existing registration/login/state smoke tests, and new feature tests.
+- Feature tests verify bonus reason/claim and duplicate-claim rejection, daily target count only after referral task unlock, target reward credit and duplicate protection, and admin UPI toggle propagation.
+- Live hosting/Supabase production data, real QR payment, UPI app handoff across devices, and payment provider credentials cannot be verified from this local ZIP. QR/UTR mode remains admin-manual verification; a UPI deep link does not itself verify payment.

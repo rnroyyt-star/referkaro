@@ -92,3 +92,12 @@ To enable generation, add these Hostinger environment variables and restart the 
 - `AI_MODEL` — optional; defaults to `gpt-4o-mini`.
 
 The feature only fetches public HTTP(S) HTML/plain-text pages and rejects obvious private/local IP URL patterns and redirects. Some sites block automated access or render content only in JavaScript; those links may not generate questions. Admin can still enter/edit questions manually. Do not treat generated answers as authoritative without reviewing them.
+
+## 1.3.0 features (2026-10-21)
+- Referral discount remains controlled by the admin ON/OFF setting; the referral-page offer message is hidden when disabled or when no positive discount is configured.
+- Admin can create a one-time user bonus with an amount and reason. The user claims it from Home; the server credits the wallet exactly once. Pending bonuses can be cancelled by the admin.
+- Admin can configure cumulative daily referral targets per user (for example 3, 5, 10). Only direct referrals registered during the current India-time day and whose task access is unlocked count. Each target reward can be claimed once per day; progress resets at the India-time day boundary while claim history remains.
+- Admin can toggle the Pay via UPI button independently of QR/UTR mode. The UPI link pre-fills the current checkout amount; manual UTR payment requests still require admin verification.
+- Added feature smoke tests for bonus claiming, daily target completion/claim idempotency, and UPI button setting propagation.
+
+Before deploying, back up the production Supabase row and test with staging credentials. The UPI deep link opens a payment app but cannot itself confirm payment; QR/UTR payments remain manual admin verification unless a bank/provider verification integration is configured.
