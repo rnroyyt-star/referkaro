@@ -484,6 +484,15 @@ const srv=http.createServer(async(req,res)=>{
   if(url.pathname.startsWith('/api/')&&req.method==='POST'){const k=url.pathname.slice(5),h=R[k];if(!h)return bad(res,'Not found',404);
    if((req.headers['content-type']||'').indexOf('application/json')<0)return bad(res,'Bad request');
    const u=authU(req);if(!PUBLIC.has(k)&&!u)return bad(res,'Please login',401);const parsed=await body(req,k==='admin/restore'?32e6:k==='admin/payment'?6e5:k==='admin/daily'?1e5:k==='admin/home-images'?24e6:2e4);if(parsed&&parsed.__bodyError)return bad(res,parsed.__bodyError,parsed.__bodyError==='Request body too large'?413:400);return await h(req,res,parsed,u)}
+  if(req.method==='GET'&&['/manifest.json','/sw.js','/icons/icon-192.png','/icons/icon-512.png'].includes(url.pathname)){
+   const f=path.join(__dirname,url.pathname.slice(1));
+   if(!fs.existsSync(f)){res.writeHead(404);return res.end('Not found')}
+   const ext=path.extname(f).toLowerCase();
+   const ct={'.json':'application/manifest+json; charset=utf-8','.js':'application/javascript; charset=utf-8','.png':'image/png'}[ext]||'application/octet-stream';
+   const cacheControl=url.pathname==='/sw.js'||url.pathname==='/manifest.json'?'no-cache':'public, max-age=86400';
+   res.writeHead(200,{'Content-Type':ct,'Cache-Control':cacheControl});
+   return fs.createReadStream(f).pipe(res);
+  }
   if(req.method==='GET'&&url.pathname.startsWith('/uploads/')){const name=path.basename(url.pathname.slice('/uploads/'.length));if(!name||name!==url.pathname.slice('/uploads/'.length))return bad(res,'Not found',404);const f=path.join(UPLOAD_DIR,name);if(!fs.existsSync(f))return bad(res,'Not found',404);const ext=path.extname(f).toLowerCase(),ct={'.mp4':'video/mp4','.webm':'video/webm','.ogg':'video/ogg','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp'}[ext]||'application/octet-stream';res.writeHead(200,{'Content-Type':ct,'Cache-Control':'public, max-age=31536000, immutable'});return fs.createReadStream(f).pipe(res)}
   if(req.method==='GET'&&url.pathname==='/'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});return res.end(fs.readFileSync(path.join(__dirname,'index.html')))}
   res.writeHead(404);res.end('Not found');

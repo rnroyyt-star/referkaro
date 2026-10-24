@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
-<meta name="color-scheme" content="light"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light"><meta name="theme-color" content="#16a34a"><link rel="manifest" href="/manifest.json"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Refer Karo</title>
 <style>
 :root{color-scheme:light;--o:#f97316;--o2:#ea580c;--bg:#fff;--c:#fff;--t:#1c1917;--m:#78716c;--b:#fed7aa;--ok:#16a34a;--er:#dc2626;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px)}
@@ -731,6 +731,19 @@ let liveRefresh=null;function startLiveRefresh(){if(liveRefresh)clearInterval(li
    var b=findAddQrButton();
    if(b) b.click();
  };
+})();
+</script>
+
+
+<script>
+(function(){
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js').catch(function (err) {
+        console.warn('ReferKro app setup could not register service worker:', err);
+      });
+    });
+  }
 })();
 </script>
 
