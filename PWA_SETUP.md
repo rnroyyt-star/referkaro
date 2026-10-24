@@ -7,7 +7,7 @@ This package adds installable-PWA support to the existing ReferKro Node.js app.
 - `sw.js` with a service worker that does not cache `/api/` responses or user-specific HTML
 - `icons/icon-192.png` and `icons/icon-512.png`
 - `index.html` links to the manifest and registers the service worker on HTTPS
-- `server.js` serves the manifest, service worker, and icons with suitable content types and cache headers
+- `server.js` serves the manifest, service worker, and icons with suitable content types and cache headers; both `/icons/icon-192.png` and `/icon-192.png` style icon paths are supported
 
 ## Deploy notes
 1. Back up the current deployed code and data before replacing files.
