@@ -484,8 +484,9 @@ const srv=http.createServer(async(req,res)=>{
   if(url.pathname.startsWith('/api/')&&req.method==='POST'){const k=url.pathname.slice(5),h=R[k];if(!h)return bad(res,'Not found',404);
    if((req.headers['content-type']||'').indexOf('application/json')<0)return bad(res,'Bad request');
    const u=authU(req);if(!PUBLIC.has(k)&&!u)return bad(res,'Please login',401);const parsed=await body(req,k==='admin/restore'?32e6:k==='admin/payment'?6e5:k==='admin/daily'?1e5:k==='admin/home-images'?24e6:2e4);if(parsed&&parsed.__bodyError)return bad(res,parsed.__bodyError,parsed.__bodyError==='Request body too large'?413:400);return await h(req,res,parsed,u)}
-  if(req.method==='GET'&&['/manifest.json','/sw.js','/icons/icon-192.png','/icons/icon-512.png'].includes(url.pathname)){
-   const f=path.join(__dirname,url.pathname.slice(1));
+  if(req.method==='GET'&&['/manifest.json','/sw.js','/icons/icon-192.png','/icons/icon-512.png','/icon-192.png','/icon-512.png'].includes(url.pathname)){
+   const assetPath=url.pathname==='/icon-192.png'?'/icons/icon-192.png':url.pathname==='/icon-512.png'?'/icons/icon-512.png':url.pathname;
+   const f=path.join(__dirname,assetPath.slice(1));
    if(!fs.existsSync(f)){res.writeHead(404);return res.end('Not found')}
    const ext=path.extname(f).toLowerCase();
    const ct={'.json':'application/manifest+json; charset=utf-8','.js':'application/javascript; charset=utf-8','.png':'image/png'}[ext]||'application/octet-stream';
