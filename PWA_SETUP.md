@@ -1,27 +1,20 @@
 # ReferKro PWA setup
 
-This package adds installable-PWA support to the existing ReferKro Node.js app.
+PWA support is integrated without changing the existing website design or other app features.
 
-## Included changes
-- `manifest.json` with ReferKro app metadata
-- `sw.js` with a service worker that does not cache `/api/` responses or user-specific HTML
-- `icons/icon-192.png` and `icons/icon-512.png`
-- `index.html` links to the manifest and registers the service worker on HTTPS
-- `server.js` serves the manifest, service worker, and icons with suitable content types and cache headers; both `/icons/icon-192.png` and `/icon-192.png` style icon paths are supported
+## Included behavior
+- Profile always shows a **Download App** / **Open App** action. It remains visible after installation.
+- When installation is detected, the action changes to **Open App**. In an installed standalone app it navigates to the app home; from a browser it opens the same-origin app URL in a new top-level tab so Android can hand it to the installed PWA when link capture is enabled.
+- The floating install shortcut also remains available and changes its label based on installation state.
+- The manifest declares separate standard and maskable 192x192 and 512x512 icons. Maskable artwork keeps the logo inside the safe area.
+- Legacy icon URLs point to the canonical ReferKro icon artwork to avoid stale shortcut branding.
+- Service worker precaches all four PWA icons, uses a bumped cache version, and does not cache API responses or user-specific HTML.
 
-## Deploy notes
-1. Back up the current deployed code and data before replacing files.
-2. Deploy the whole project using the same hosting/start command and environment variables as before.
-3. Confirm these URLs return successfully on the live HTTPS domain:
-   - `/manifest.json`
-   - `/sw.js`
-   - `/icons/icon-192.png`
-   - `/icons/icon-512.png`
-4. Open the website in Chrome on Android and use the browser menu's **Install app** or **Add to Home screen** option if offered.
+## Verify after deployment
+Check these HTTPS URLs return HTTP 200 with the expected content types:
+- `/manifest.json`
+- `/sw.js`
+- `/icons/icon-192.png` and `/icons/icon-512.png`
+- `/icons/icon-192-maskable.png` and `/icons/icon-512-maskable.png`
 
-The service worker intentionally does not cache API responses or the main page, to avoid showing stale account/wallet data. This means offline access is not provided. Updates appear from the live website after deployment and a normal service-worker refresh cycle; they are not guaranteed to appear instantly. The hosting platform must serve the same deployed code on the live domain.
-
-## Website Install Button
-- The website includes an **Install ReferKro** button for browsers that are not already running the installed app.
-- On browsers that support `beforeinstallprompt`, the button opens the native install prompt. On browsers without that API, it shows the browser-menu steps (Install app / Add to Home Screen).
-- After installation, the button is hidden for that browser/device and is also hidden while the app is running in standalone mode.
+On Android Chrome, install the app from the browser menu if needed. If Android does not hand an Open App link to the installed PWA, check Android Settings → Apps → ReferKro → Open by default / supported links; OS link-capture behavior varies by Android and browser version.

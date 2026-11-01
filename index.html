@@ -79,6 +79,7 @@ body.admin-mode .admin-back-bottom{position:fixed;z-index:8;bottom:calc(8px + en
 .user-admin-actions .btn{flex:0 0 auto;width:auto;min-width:max-content;padding:6px 10px;font-size:11px;white-space:nowrap;border-radius:999px}
 .user-admin-card{padding:12px}
 @media(max-width:520px){.user-admin-actions{gap:5px}.user-admin-actions .btn{font-size:10px;padding:6px 9px}.user-admin-card .row{gap:8px}}
+.profile-app-btn{display:block;width:100%;margin:10px 0;padding:12px 14px;border:0;border-radius:10px;background:var(--o);color:#fff;font:700 14px system-ui;cursor:pointer;box-shadow:0 3px 12px #0002}.profile-app-btn:active{transform:scale(.99)}
 .pwa-install{position:fixed;z-index:12;right:16px;bottom:calc(92px + env(safe-area-inset-bottom,0px));border:0;border-radius:999px;padding:11px 16px;background:var(--o);color:#fff;font:700 13px system-ui;box-shadow:0 4px 16px #0003;cursor:pointer}.pwa-install[hidden]{display:none!important}body.admin-mode .pwa-install{display:none}@media(min-width:700px){.pwa-install{bottom:20px}}
 </style>
 <style>
@@ -301,7 +302,7 @@ function profile(u){return`<div class="fade"><div class="card hero" style="paddi
 <div style="min-width:0"><b style="font-size:17px">${esc(u.name)}</b><div style="font-size:13px;opacity:.95">${esc(maskE(u.email))}</div>
 <div style="font-size:13px;display:flex;align-items:center;gap:6px">ID: ${u.id}<button onclick="copyId('${u.id}')" style="border:0;background:#fff3;color:#fff;border-radius:6px;padding:3px 5px;display:grid;place-items:center">${svg(IC.cp).replace('20','14').replace('20','14')}</button></div></div></div></div>
 <div class="card" style="display:flex;text-align:center;padding:14px 0"><div style="flex:1;border-right:1px solid var(--b)"><div style="font:800 22px inherit;color:var(--o2)">${inr(balance(u))}</div><div class="m">Wallet balance</div></div><div style="flex:1"><div style="font:800 22px inherit;color:var(--o2)">${refs(u).filter(unlocked).length}</div><div class="m">Verified referrals</div></div></div>
-<div class="card" style="padding:4px 14px">${mi('tx','Transactions',"go('profile','txns')")}${mi('wd','Withdrawal History',"go('wallet')")}${mi('sup','Support Center',"go('profile','support')")}${mi('pw','Change Password','chPw()')}${isAdmin(u)?mi('adm','Admin Panel',"go('profile','admin')"):''}${mi('del',u.delReq?'Deletion requested':'Request account deletion','delReq()',1)}${mi('out','Logout','logout()',1)}</div>${foot()}</div>`}
+<div class="card" style="padding:4px 14px"><button id="profileAppBtn" class="profile-app-btn" type="button" onclick="window.__referkroAppAction&&window.__referkroAppAction()">⬇ Download App</button>${mi('tx','Transactions',"go('profile','txns')")}${mi('wd','Withdrawal History',"go('wallet')")}${mi('sup','Support Center',"go('profile','support')")}${mi('pw','Change Password','chPw()')}${isAdmin(u)?mi('adm','Admin Panel',"go('profile','admin')"):''}${mi('del',u.delReq?'Deletion requested':'Request account deletion','delReq()',1)}${mi('out','Logout','logout()',1)}</div>${foot()}</div>`}
 function chPw(){modal(`<h2>Change password</h2><label>Current password</label><input id="cp" type="password" autocomplete="current-password"><label>New password (min 8)</label><input id="np2" type="password" autocomplete="new-password"><button class="btn" onclick="doChPw()">Update password</button>`)}
 let at='over',aq='',af='All',targetHistoryUid='';
 // Keep the last admin section selected across renders and reloads.
@@ -688,6 +689,7 @@ function render(){const u=me(),a=$('#app');let h;document.body.classList.toggle(
  else if(tab==='course')h=course(u);else if(tab==='wallet')h=wallet(u);else if(tab==='refer')h=refer(u);
  else if(tab==='profile')h=view==='txns'?txns(u):view==='support'?support():view==='admin'&&isAdmin(u)?admin():profile(u);
  a.innerHTML=h;
+ if(window.__referkroUpdateInstallButton)window.__referkroUpdateInstallButton();
  updateOfferCountdowns();
  if(qrTimer){clearInterval(qrTimer);qrTimer=null}
  const T=[['home',`<svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8v10H3z"/></svg>`,'Home'],['course',`<svg viewBox="0 0 24 24"><path d="M8 4h8v3H8zM6 6h12v15H6zM9 13l2 2 4-4"/></svg>`,'Task'],['wallet',`<svg viewBox="0 0 24 24"><path d="M3 7h18v13H3zM3 7l3-3h12v3M16 13h3"/></svg>`,'Wallet'],['refer',`<svg viewBox="0 0 24 24"><path d="M18 8a3 3 0 100-6 3 3 0 000 6zM6 15a3 3 0 100-6 3 3 0 000 6zM18 22a3 3 0 100-6 3 3 0 000 6zM8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>`,'Refer'],['profile',`<svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 100-8 4 4 0 000 8zM4 21c0-4 4-6 8-6s8 2 8 6"/></svg>`,'Profile']];
@@ -728,14 +730,40 @@ let liveRefresh=null;function startLiveRefresh(){if(liveRefresh)clearInterval(li
 
 
 <script>
-(function(){var button=document.getElementById('pwaInstallBtn');if(!button)return;var deferred=null;
-var stored=()=>{try{return localStorage.getItem('referkro_pwa_installed')==='1'}catch(e){return false}},markInstalled=()=>{try{localStorage.setItem('referkro_pwa_installed','1')}catch(e){}};
-var installed=()=>((window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||window.navigator.standalone===true||stored());
-var hide=()=>{button.hidden=true},show=()=>{if(!installed()&&!document.body.classList.contains('admin-mode'))button.hidden=false};window.__referkroUpdateInstallButton=()=>{if(installed())hide();else show()};if(installed())hide();else show();
-window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;show()});
-window.addEventListener('appinstalled',()=>{markInstalled();deferred=null;hide()});
-button.addEventListener('click',async()=>{if(installed()){hide();return}if(deferred){deferred.prompt();try{const choice=await deferred.userChoice;if(choice&&choice.outcome==='accepted'){markInstalled();hide()}}catch(e){}deferred=null;return}alert('To install ReferKro, open your browser menu and choose “Install app” or “Add to Home Screen”.')});
-window.addEventListener('pageshow',()=>{if(installed())hide();else if(deferred)show()});})();
+(function(){
+ var button=document.getElementById('pwaInstallBtn'),deferred=null;
+ var stored=()=>{try{return localStorage.getItem('referkro_pwa_installed')==='1'}catch(e){return false}};
+ var markInstalled=()=>{try{localStorage.setItem('referkro_pwa_installed','1')}catch(e){}};
+ var standalone=()=>((window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||window.navigator.standalone===true);
+ var installed=()=>standalone()||stored();
+ function update(){
+   var isInstalled=installed(),label=isInstalled?'↗ Open App':'⬇ Download App';
+   if(button){button.hidden=false;button.textContent=label;button.setAttribute('aria-label',isInstalled?'Open ReferKro app':'Download ReferKro app');}
+   var profileButton=document.getElementById('profileAppBtn');
+   if(profileButton){profileButton.textContent=label;profileButton.setAttribute('aria-label',isInstalled?'Open ReferKro app':'Download ReferKro app');}
+ }
+ function openApp(){
+   var target=new URL('/#home',location.origin).href;
+   if(standalone()){location.href=target;return;}
+   /* Open in a new top-level browsing context so Android can hand the verified
+      same-origin PWA URL to the installed app when link capture is enabled. */
+   var opened=window.open(target,'_blank');
+   if(!opened) location.href=target;
+ }
+ async function action(){
+   if(installed()){openApp();return;}
+   if(deferred){var promptEvent=deferred;deferred=null;try{await promptEvent.prompt();var choice=await promptEvent.userChoice;if(choice&&choice.outcome==='accepted')markInstalled();}catch(e){}update();return;}
+   alert('To install ReferKro, open your browser menu and choose “Install app” or “Add to Home Screen”.');
+ }
+ window.__referkroAppAction=action;
+ window.__referkroUpdateInstallButton=update;
+ if(button)button.addEventListener('click',action);
+ window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();deferred=e;update()});
+ window.addEventListener('appinstalled',function(){markInstalled();deferred=null;update()});
+ window.addEventListener('pageshow',update);
+ document.addEventListener('visibilitychange',function(){if(!document.hidden)update()});
+ update();
+})();
 </script>
 <script>
 (function(){

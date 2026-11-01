@@ -488,7 +488,7 @@ const srv=http.createServer(async(req,res)=>{
   if(url.pathname.startsWith('/api/')&&req.method==='POST'){const k=url.pathname.slice(5),h=R[k];if(!h)return bad(res,'Not found',404);
    if((req.headers['content-type']||'').indexOf('application/json')<0)return bad(res,'Bad request');
    const u=authU(req);if(!PUBLIC.has(k)&&!u)return bad(res,'Please login',401);const parsed=await body(req,k==='admin/restore'?32e6:k==='admin/payment'?6e5:k==='admin/daily'?1e5:k==='admin/home-images'?24e6:2e4);if(parsed&&parsed.__bodyError)return bad(res,parsed.__bodyError,parsed.__bodyError==='Request body too large'?413:400);return await h(req,res,parsed,u)}
-  if(req.method==='GET'&&['/manifest.json','/sw.js','/icons/icon-192.png','/icons/icon-512.png','/icon-192.png','/icon-512.png','/favicon.ico','/favicon.png','/favicon-32.png','/apple-touch-icon.png','/public/icon-192.png','/public/icon-512.png','/public/icons/icon-192.png','/public/icons/icon-512.png','/public/apple-touch-icon.png','/public/favicon-32.png'].includes(url.pathname)){
+  if(req.method==='GET'&&['/manifest.json','/sw.js','/icons/icon-192.png','/icons/icon-512.png','/icons/icon-192-maskable.png','/icons/icon-512-maskable.png','/icon-192.png','/icon-512.png','/favicon.ico','/favicon.png','/favicon-32.png','/apple-touch-icon.png','/public/icon-192.png','/public/icon-512.png','/public/icons/icon-192.png','/public/icons/icon-512.png','/public/apple-touch-icon.png','/public/favicon-32.png'].includes(url.pathname)){
    // Support both the manifest's /icons/... paths and root-level icon URLs.
    // This keeps older manifests/hosting links working during deployment updates.
    const assetPaths={
@@ -496,18 +496,20 @@ const srv=http.createServer(async(req,res)=>{
     '/sw.js':'sw.js',
     '/icons/icon-192.png':'icons/icon-192.png',
     '/icons/icon-512.png':'icons/icon-512.png',
-    '/icon-192.png':'icon-192.png',
-    '/icon-512.png':'icon-512.png',
+    '/icons/icon-192-maskable.png':'icons/icon-192-maskable.png',
+    '/icons/icon-512-maskable.png':'icons/icon-512-maskable.png',
+    '/icon-192.png':'icons/icon-192.png',
+    '/icon-512.png':'icons/icon-512.png',
     '/favicon.ico':'favicon.ico',
-    '/favicon.png':'favicon.png',
-    '/favicon-32.png':'favicon-32.png',
-    '/apple-touch-icon.png':'apple-touch-icon.png',
-    '/public/icon-192.png':'icon-192.png',
-    '/public/icon-512.png':'icon-512.png',
+    '/favicon.png':'icons/icon-192.png',
+    '/favicon-32.png':'icons/icon-192.png',
+    '/apple-touch-icon.png':'icons/icon-192.png',
+    '/public/icon-192.png':'icons/icon-192.png',
+    '/public/icon-512.png':'icons/icon-512.png',
     '/public/icons/icon-192.png':'icons/icon-192.png',
     '/public/icons/icon-512.png':'icons/icon-512.png',
-    '/public/apple-touch-icon.png':'apple-touch-icon.png',
-    '/public/favicon-32.png':'favicon-32.png'
+    '/public/apple-touch-icon.png':'icons/icon-192.png',
+    '/public/favicon-32.png':'icons/icon-192.png'
    };
    const f=path.join(__dirname,assetPaths[url.pathname]);
    if(!fs.existsSync(f)){res.writeHead(404,{'Cache-Control':'no-store'});return res.end('Not found')}
