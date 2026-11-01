@@ -18,3 +18,11 @@ Check these HTTPS URLs return HTTP 200 with the expected content types:
 - `/icons/icon-192-maskable.png` and `/icons/icon-512-maskable.png`
 
 On Android Chrome, install the app from the browser menu if needed. If Android does not hand an Open App link to the installed PWA, check Android Settings → Apps → ReferKro → Open by default / supported links; OS link-capture behavior varies by Android and browser version.
+
+
+## Profile install button behavior
+- The compact **Download App** button is rendered only inside the Profile screen.
+- Its label always remains **Download App**, including after installation; there is no **Open App** mode or launch-app action.
+- On supported Android Chrome browsers, tapping it opens the native PWA install prompt when the browser supplies `beforeinstallprompt`.
+- If the browser does not supply that event (including when the app is already installed), the button explains how to use the browser's Install app / Add to Home Screen menu.
+- This is a website-installed PWA, not a downloadable APK file.

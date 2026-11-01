@@ -731,36 +731,39 @@ let liveRefresh=null;function startLiveRefresh(){if(liveRefresh)clearInterval(li
 
 <script>
 (function(){
- var deferred=null;
- var stored=()=>{try{return localStorage.getItem('referkro_pwa_installed')==='1'}catch(e){return false}};
- var markInstalled=()=>{try{localStorage.setItem('referkro_pwa_installed','1')}catch(e){}};
- var standalone=()=>((window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||window.navigator.standalone===true);
- var installed=()=>standalone()||stored();
- function update(){
-   var isInstalled=installed(),label=isInstalled?'↗ Open App':'⬇ Download App';
-   var profileButton=document.getElementById('profileAppBtn');
-   if(profileButton){profileButton.textContent=label;profileButton.setAttribute('aria-label',isInstalled?'Open ReferKro app':'Download ReferKro app');}
- }
- function openApp(){
-   var target=new URL('/#home',location.origin).href;
-   if(standalone()){location.href=target;return;}
-   /* Open in a new top-level browsing context so Android can hand the verified
-      same-origin PWA URL to the installed app when link capture is enabled. */
-   var opened=window.open(target,'_blank');
-   if(!opened) location.href=target;
- }
- async function action(){
-   if(installed()){openApp();return;}
-   if(deferred){var promptEvent=deferred;deferred=null;try{await promptEvent.prompt();var choice=await promptEvent.userChoice;if(choice&&choice.outcome==='accepted')markInstalled();}catch(e){}update();return;}
-   alert('To install ReferKro, open your browser menu and choose “Install app” or “Add to Home Screen”.');
- }
- window.__referkroAppAction=action;
- window.__referkroUpdateInstallButton=update;
- window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();deferred=e;update()});
- window.addEventListener('appinstalled',function(){markInstalled();deferred=null;update()});
- window.addEventListener('pageshow',update);
- document.addEventListener('visibilitychange',function(){if(!document.hidden)update()});
- update();
+  var deferred=null;
+  function update(){
+    var profileButton=document.getElementById('profileAppBtn');
+    if(profileButton){
+      profileButton.textContent='⬇ Download App';
+      profileButton.setAttribute('aria-label','Download ReferKro app');
+    }
+  }
+  async function action(){
+    if(deferred){
+      var promptEvent=deferred;
+      deferred=null;
+      try{
+        await promptEvent.prompt();
+        await promptEvent.userChoice;
+      }catch(e){
+        console.warn('ReferKro install prompt was not completed:',e);
+      }
+      update();
+      return;
+    }
+    alert('To install ReferKro, open your browser menu and choose “Install app” or “Add to Home Screen”.');
+  }
+  window.__referkroAppAction=action;
+  window.__referkroUpdateInstallButton=update;
+  window.addEventListener('beforeinstallprompt',function(e){
+    e.preventDefault();
+    deferred=e;
+    update();
+  });
+  window.addEventListener('appinstalled',update);
+  window.addEventListener('pageshow',update);
+  update();
 })();
 </script>
 <script>
