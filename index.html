@@ -79,8 +79,8 @@ body.admin-mode .admin-back-bottom{position:fixed;z-index:8;bottom:calc(8px + en
 .user-admin-actions .btn{flex:0 0 auto;width:auto;min-width:max-content;padding:6px 10px;font-size:11px;white-space:nowrap;border-radius:999px}
 .user-admin-card{padding:12px}
 @media(max-width:520px){.user-admin-actions{gap:5px}.user-admin-actions .btn{font-size:10px;padding:6px 9px}.user-admin-card .row{gap:8px}}
-.profile-app-btn{display:block;width:100%;margin:10px 0;padding:12px 14px;border:0;border-radius:10px;background:var(--o);color:#fff;font:700 14px system-ui;cursor:pointer;box-shadow:0 3px 12px #0002}.profile-app-btn:active{transform:scale(.99)}
-.pwa-install{position:fixed;z-index:12;right:16px;bottom:calc(92px + env(safe-area-inset-bottom,0px));border:0;border-radius:999px;padding:11px 16px;background:var(--o);color:#fff;font:700 13px system-ui;box-shadow:0 4px 16px #0003;cursor:pointer}.pwa-install[hidden]{display:none!important}body.admin-mode .pwa-install{display:none}@media(min-width:700px){.pwa-install{bottom:20px}}
+.profile-app-btn{display:block;width:100%;min-height:34px;margin:8px 0;padding:8px 10px;border:0;border-radius:8px;background:var(--o);color:#fff;font:700 12px system-ui;cursor:pointer;box-shadow:0 2px 7px #0002}.profile-app-btn:active{transform:scale(.99)}
+
 </style>
 <style>
 /* Task page: prevent visual blink/flicker while live countdown continues */
@@ -93,7 +93,7 @@ body.admin-mode .admin-back-bottom{position:fixed;z-index:8;bottom:calc(8px + en
 
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 </head><body>
-<main id="app"><p class="m" style="text-align:center;margin-top:40vh">Loading…</p></main><button id="pwaInstallBtn" class="pwa-install" type="button" hidden>⬇ Install ReferKro</button><div id="nav"></div><div class="toast" id="toast"></div><div id="md"></div>
+<main id="app"><p class="m" style="text-align:center;margin-top:40vh">Loading…</p></main><div id="nav"></div><div class="toast" id="toast"></div><div id="md"></div>
 <script>
 /* ===== CONFIG: replace placeholders before launch ===== */
 const CFG={brand:'Refer Karo',gstin:'',gstRate:18,price:299,disc:0,fee:1,offerEnd:'2000-01-01',minWd:500,minDirectRefs:3,withdrawalDay:0,commission:100,level2:10,level3:2,dailyReward:40,taskReferral:5,taskReferralLevel2:2,
@@ -731,14 +731,13 @@ let liveRefresh=null;function startLiveRefresh(){if(liveRefresh)clearInterval(li
 
 <script>
 (function(){
- var button=document.getElementById('pwaInstallBtn'),deferred=null;
+ var deferred=null;
  var stored=()=>{try{return localStorage.getItem('referkro_pwa_installed')==='1'}catch(e){return false}};
  var markInstalled=()=>{try{localStorage.setItem('referkro_pwa_installed','1')}catch(e){}};
  var standalone=()=>((window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||window.navigator.standalone===true);
  var installed=()=>standalone()||stored();
  function update(){
    var isInstalled=installed(),label=isInstalled?'↗ Open App':'⬇ Download App';
-   if(button){button.hidden=false;button.textContent=label;button.setAttribute('aria-label',isInstalled?'Open ReferKro app':'Download ReferKro app');}
    var profileButton=document.getElementById('profileAppBtn');
    if(profileButton){profileButton.textContent=label;profileButton.setAttribute('aria-label',isInstalled?'Open ReferKro app':'Download ReferKro app');}
  }
@@ -757,7 +756,6 @@ let liveRefresh=null;function startLiveRefresh(){if(liveRefresh)clearInterval(li
  }
  window.__referkroAppAction=action;
  window.__referkroUpdateInstallButton=update;
- if(button)button.addEventListener('click',action);
  window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();deferred=e;update()});
  window.addEventListener('appinstalled',function(){markInstalled();deferred=null;update()});
  window.addEventListener('pageshow',update);
