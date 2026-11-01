@@ -23,6 +23,8 @@ On Android Chrome, install the app from the browser menu if needed. If Android d
 ## Profile install button behavior
 - The compact **Download App** button is rendered only inside the Profile screen.
 - Its label always remains **Download App**, including after installation; there is no **Open App** mode or launch-app action.
-- On supported Android Chrome browsers, tapping it opens the native PWA install prompt when the browser supplies `beforeinstallprompt`.
-- If the browser does not supply that event (including when the app is already installed), the button explains how to use the browser's Install app / Add to Home Screen menu.
+- On supported Android Chrome and desktop Chromium browsers, tapping it opens the native PWA install prompt when the browser supplies `beforeinstallprompt`.
+- If the browser does not supply that event, the button gives platform-specific installation steps: Android browser menu, desktop Chrome/Edge install menu, or iPhone/iPad Safari Share → Add to Home Screen.
+- If the PWA is already running in standalone mode, the button explains that it is already installed. The label remains **Download App**; there is no Open App action.
+- iOS does not allow a website button to force the native installation prompt. Users must confirm Add to Home Screen in Safari.
 - This is a website-installed PWA, not a downloadable APK file.

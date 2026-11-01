@@ -732,27 +732,52 @@ let liveRefresh=null;function startLiveRefresh(){if(liveRefresh)clearInterval(li
 <script>
 (function(){
   var deferred=null;
+  function isIOS(){
+    return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+      (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  }
+  function isStandalone(){
+    return window.matchMedia('(display-mode: standalone)').matches ||
+      window.navigator.standalone===true;
+  }
   function update(){
     var profileButton=document.getElementById('profileAppBtn');
     if(profileButton){
       profileButton.textContent='⬇ Download App';
       profileButton.setAttribute('aria-label','Download ReferKro app');
+      profileButton.setAttribute('type','button');
     }
   }
   async function action(){
+    if(isStandalone()){
+      alert('ReferKro is already installed on this device.');
+      return;
+    }
     if(deferred){
       var promptEvent=deferred;
       deferred=null;
       try{
         await promptEvent.prompt();
-        await promptEvent.userChoice;
+        var choice=await promptEvent.userChoice;
+        if(choice && choice.outcome==='accepted'){
+          console.info('ReferKro installation accepted.');
+        }
       }catch(e){
         console.warn('ReferKro install prompt was not completed:',e);
       }
       update();
       return;
     }
-    alert('To install ReferKro, open your browser menu and choose “Install app” or “Add to Home Screen”.');
+    if(isIOS()){
+      alert('To install ReferKro on iPhone or iPad:\n1. Open this website in Safari.\n2. Tap the Share button.\n3. Choose “Add to Home Screen”.\n4. Tap “Add”.');
+      return;
+    }
+    var ua=navigator.userAgent||'';
+    if(/android/i.test(ua)){
+      alert('To install ReferKro on Android, open the browser menu (⋮) and choose “Install app” or “Add to Home screen”. If the option is missing, update Chrome and open this website directly in Chrome.');
+      return;
+    }
+    alert('To install ReferKro on this computer, use your browser menu and choose “Install ReferKro” or “Install app”. In Chrome or Edge, you may also see an Install icon near the address bar.');
   }
   window.__referkroAppAction=action;
   window.__referkroUpdateInstallButton=update;
@@ -761,7 +786,10 @@ let liveRefresh=null;function startLiveRefresh(){if(liveRefresh)clearInterval(li
     deferred=e;
     update();
   });
-  window.addEventListener('appinstalled',update);
+  window.addEventListener('appinstalled',function(){
+    deferred=null;
+    update();
+  });
   window.addEventListener('pageshow',update);
   update();
 })();
