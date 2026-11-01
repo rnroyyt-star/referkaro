@@ -2,7 +2,7 @@
  * Never cache API responses or user-specific HTML/data.
  * Navigation stays network-first so live website updates appear in the installed app.
  */
-const CACHE_NAME = 'referkro-static-v1';
+const CACHE_NAME = 'referkro-static-v2';
 const STATIC_ASSETS = ['/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {

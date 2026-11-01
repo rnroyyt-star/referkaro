@@ -20,3 +20,8 @@ This package adds installable-PWA support to the existing ReferKro Node.js app.
 4. Open the website in Chrome on Android and use the browser menu's **Install app** or **Add to Home screen** option if offered.
 
 The service worker intentionally does not cache API responses or the main page, to avoid showing stale account/wallet data. This means offline access is not provided. Updates appear from the live website after deployment and a normal service-worker refresh cycle; they are not guaranteed to appear instantly. The hosting platform must serve the same deployed code on the live domain.
+
+## Website Install Button
+- The website includes an **Install ReferKro** button for browsers that are not already running the installed app.
+- On browsers that support `beforeinstallprompt`, the button opens the native install prompt. On browsers without that API, it shows the browser-menu steps (Install app / Add to Home Screen).
+- After installation, the button is hidden for that browser/device and is also hidden while the app is running in standalone mode.

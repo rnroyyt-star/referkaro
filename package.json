@@ -6,8 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node scripts/check-inline.js",
-    "test": "npm run check && node test/smoke.js && node test/features.js && node test/pwa.js"
+    "check": "node --check server.js && node check-inline.js",
+    "test": "npm run check && node smoke.js && node features.js && node pwa.js"
   },
   "engines": {
     "node": ">=18.18.0"
