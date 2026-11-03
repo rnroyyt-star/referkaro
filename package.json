@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "check": "node --check server.js && node check-inline.js",
-    "test": "npm run check && node smoke.js && node features.js && node pwa.js"
+    "test": "npm run check && node smoke.js && node features.js && node referral-unlock.test.js && node pwa.js"
   },
   "engines": {
     "node": ">=18.18.0"

@@ -11,7 +11,7 @@ const payTotalFor=u=>{const eligible=!!(u&&u.refBy&&D.users.some(x=>x.id===u.ref
 const payTotal=()=>C.price+C.fee;
 let D={users:[],pays:[],wd:[],tix:[],sessions:{},resets:{},daily:{},otps:{},pay:{},settings:{telegramJoin:'https://t.me/movie_box00',telegramSupport:'https://t.me/movie_box00',authSupport:'https://t.me/movie_box00'},qrStats:{}};
 try{D={...D,...JSON.parse(fs.readFileSync(FILE,'utf8'))}}catch{}
-D.qrStats=(D.qrStats&&typeof D.qrStats==='object')?D.qrStats:{};
+D.qrStats=(D.qrStats&&typeof D.qrStats==='object')?D.qrStats:{};D.referralUnlocks=Array.isArray(D.referralUnlocks)?D.referralUnlocks:[];
 D.users=Array.isArray(D.users)?D.users:[];D.pays=Array.isArray(D.pays)?D.pays:[];D.pays.forEach(p=>{if(p&&p.ts&&!p.submittedAt)p.submittedAt=p.ts;if(p&&!p.payeeName&&p.qrPayee)p.payeeName=p.qrPayee});D.wd=Array.isArray(D.wd)?D.wd:[];D.tix=Array.isArray(D.tix)?D.tix:[];D.sessions=D.sessions&&typeof D.sessions==='object'?D.sessions:{};D.resets=D.resets&&typeof D.resets==='object'?D.resets:{};D.otps=D.otps&&typeof D.otps==='object'?D.otps:{};D.daily=D.daily&&typeof D.daily==='object'?D.daily:{};D.pay=D.pay&&typeof D.pay==='object'?D.pay:{};D.settings=D.settings&&typeof D.settings==='object'?D.settings:{};
 if(D.settings.rewardConfig&&typeof D.settings.rewardConfig==='object'){for(const k of ['commission','level2','level3','dailyReward','taskReferral','taskReferralLevel2']){const n=Number(D.settings.rewardConfig[k]);if(Number.isFinite(n)&&n>=0&&n<=1000000)C[k]=n}}
 if(D.settings.businessConfig&&typeof D.settings.businessConfig==='object'){const b=D.settings.businessConfig;for(const k of ['price','fee','minWd']){const n=Number(b[k]);if(Number.isFinite(n)&&n>=0&&n<=1000000)C[k]=n}const refs=Number(b.minDirectRefs);if(Number.isInteger(refs)&&refs>=0&&refs<=100000)C.minDirectRefs=refs;const day=String(b.withdrawalDay??'0');if(day==='any'||/^[0-6]$/.test(day))C.withdrawalDay=day==='any'?'any':Number(day)}
@@ -92,7 +92,7 @@ if(!D.adminStatsReset){
 
 }
 // ---- helpers ----
-const ver=u=>!!u.admin||(!u.taskLocked&&(!!u.managedAccount||!!u.adminVerified||D.pays.some(p=>p.uid===u.id&&p.status==='Verified')));
+const ver=u=>!!u.admin||(!u.taskLocked&&(!!u.managedAccount||!!u.adminVerified||!!u.referralUnlockAt||D.pays.some(p=>p.uid===u.id&&p.status==='Verified')));
 const walletEntries=u=>{
  const e=[];
  const add=(uid,amt,level,who)=>D.pays.filter(p=>p.uid===uid&&p.status==='Verified').forEach(p=>e.push({id:'ref-'+p.id,kind:'referral',level,who,ts:p.vts||p.ts,amt}));
@@ -107,9 +107,10 @@ const walletEntries=u=>{
  (u.taskReferralLevel2Rewards||[]).forEach(x=>{const rr=D.users.find(z=>z.id===x.uid);e.push({id:'task-ref2-'+x.uid,kind:'taskref2',level:2,who:'Level 2 referral task complete'+(rr?' — '+rr.name:''),ts:x.ts||Date.now(),amt:x.amount==null?C.taskReferralLevel2:(+x.amount||0)})});
  (u.dailyReferralRewards||[]).forEach(x=>e.push({id:'daily-referral-'+x.id,kind:'dailyReferral',level:0,who:'Daily referral target reward',ts:x.ts||Date.now(),amt:+x.amount||0}));
  (u.bonuses||[]).filter(x=>x.status==='Claimed').forEach(x=>e.push({id:'bonus-'+x.id,kind:'bonus',level:0,who:'Admin Bonus: '+(x.reason||'Special Bonus'),ts:x.claimedAt||x.createdAt||Date.now(),amt:+x.amount||0}));
+ (u.walletDebits||[]).forEach(x=>e.push({id:'wallet-debit-'+x.id,kind:'walletDebit',level:0,who:x.reason||'Referral task unlock'+(x.targetName?' — '+x.targetName:''),ts:x.ts||Date.now(),amt:-Math.abs(+x.amount||0)}));
  return e.sort((a,b)=>b.ts-a.ts);
 };
-const walletData=u=>{const e=walletEntries(u),withdrawn=D.wd.filter(w=>w.uid===u.id&&w.status!=='Rejected').reduce((s,w)=>s+w.amt,0),earned=e.reduce((s,x)=>s+x.amt,0),actual=earned-withdrawn;const demo=u.admin&&D.adminDemo?D.adminDemo:null,managed=u.managedAccount&&u.demoStats&&typeof u.demoStats==='object'?u.demoStats:null;return{entries:e,earned:managed&&Number.isFinite(+managed.earned)?+managed.earned:demo&&Number.isFinite(+demo.earned)?+demo.earned:earned,balance:managed&&Number.isFinite(+managed.balance)?+managed.balance:demo&&Number.isFinite(+demo.balance)?+demo.balance:actual,adminDemo:!!demo,}};
+const walletData=u=>{const e=walletEntries(u),withdrawn=D.wd.filter(w=>w.uid===u.id&&w.status!=='Rejected').reduce((s,w)=>s+w.amt,0),debits=(u.walletDebits||[]).reduce((s,x)=>s+Math.abs(+x.amount||0),0),earned=e.filter(x=>x.amt>0).reduce((s,x)=>s+x.amt,0),actual=earned-withdrawn-debits;const demo=u.admin&&D.adminDemo?D.adminDemo:null,managed=u.managedAccount&&u.demoStats&&typeof u.demoStats==='object'?u.demoStats:null;return{entries:e,earned:managed&&Number.isFinite(+managed.earned)?+managed.earned:demo&&Number.isFinite(+demo.earned)?+demo.earned:earned,balance:managed&&Number.isFinite(+managed.balance)?+managed.balance:demo&&Number.isFinite(+demo.balance)?+demo.balance:actual,adminDemo:!!demo,}};
 const bal=u=>walletData(u).balance;
 // ---- daily task content (edit content.json, not this file) ----
 const CF=E.CONTENT_FILE||path.join(__dirname,'content.json');
@@ -153,7 +154,7 @@ const use=u=>{const d=day();if(!u.use||u.use.day!==d)u.use={day:d,secs:0,msgs:0,
 const AIS=+E.AI_SECONDS||600;
 function stat(u){const x=use(u);if(x.start&&x.secs<AIS){x.secs=Math.min(AIS,(Date.now()-x.start)/1000);if(x.secs>=AIS){u.done=u.done||[];if(!u.done.includes(x.day))u.done.push(x.day);save()}}return x}
 const aiInfo=u=>{const x=stat(u);return{secs:Math.floor(x.secs),goal:AIS,running:!!x.start&&x.secs<AIS,done:(u.done||[]).length,on:!!E.ANTHROPIC_API_KEY}};
-const pub=u=>({blocked:!!u.blocked,taskLocked:!!u.taskLocked,ai:aiInfo(u),id:u.id,email:u.email,phone:u.phone||'',name:u.name,ref:u.ref,refBy:u.refBy,referralDiscountPct:Number.isFinite(Number(u.referralDiscountPct))&&u.referralDiscountPct!==null?Number(u.referralDiscountPct):null,created:u.created,delReq:!!u.delReq,progress:u.progress||{},admin:!!u.admin,adminVerified:!!u.adminVerified,managedAccount:!!u.managedAccount,demoStats:u.managedAccount?(u.demoStats||{balance:0,earned:0,referrals:0,withdrawals:0}):undefined,wallet:walletData(u)});
+const pub=u=>({blocked:!!u.blocked,taskLocked:!!u.taskLocked,ai:aiInfo(u),id:u.id,email:u.email,phone:u.phone||'',name:u.name,ref:u.ref,refBy:u.refBy,referralDiscountPct:Number.isFinite(Number(u.referralDiscountPct))&&u.referralDiscountPct!==null?Number(u.referralDiscountPct):null,created:u.created,delReq:!!u.delReq,progress:u.progress||{},admin:!!u.admin,adminVerified:!!u.adminVerified,referralUnlockAt:u.referralUnlockAt||null,managedAccount:!!u.managedAccount,demoStats:u.managedAccount?(u.demoStats||{balance:0,earned:0,referrals:0,withdrawals:0}):undefined,wallet:walletData(u)});
 const paySlots=()=>{const p=D.pay||{};let slots=Array.isArray(p.slots)?p.slots.slice():[];if(!slots.length&&p.upi)slots=[{qid:'legacy-1',upi:p.upi,payee:p.payee,qr:p.qr||''}];slots.forEach((x,i)=>{if(x&&!x.qid)x.qid='qr-'+rid()});D.pay=D.pay||{};D.pay.slots=slots;D.qrStats=D.qrStats||{};slots.forEach(x=>{if(x&&!D.qrStats[x.qid])D.qrStats[x.qid]={submitted:0,verified:0,people:[],amount:0,verifiedAmount:0,created:Date.now()}});return{slots,active:Number.isInteger(p.active)?Math.max(0,Math.min(Math.max(0,slots.length-1),p.active)):0}};
 const qrStatsView=()=>{const ps=paySlots(),out={};for(const [qid,x] of Object.entries(D.qrStats||{}))out[qid]={submitted:+x.submitted||0,verified:+x.verified||0,people:Array.isArray(x.people)?x.people.length:0,amount:+x.amount||0,verifiedAmount:+x.verifiedAmount||0,created:x.created||0};return{slots:ps.slots.map((x,i)=>({slot:i,qid:x.qid,upi:x.upi||'',payee:x.payee||'',active:i===ps.active,stats:out[x.qid]||{submitted:0,verified:0,people:0,amount:0,verifiedAmount:0}})),history:out}};
 const paymentChoice=()=>{const ps=paySlots(),ok=ps.slots.map((x,i)=>x&&x.upi&&x.qr?i:-1).filter(i=>i>=0);if(!ok.length)return -1;return ok[Math.floor(Math.random()*ok.length)]};
@@ -167,7 +168,7 @@ function state(u){const ps=paySlots(),pick=u.admin?ps.active:paymentChoice(),a=p
  const apays=D.pays.filter(p=>realIds.has(p.uid)&&(+p.ts||0)>=cut);
  const awd=D.wd.filter(w=>realIds.has(w.uid)&&(+w.ts||0)>=cut);
  const atix=D.tix.filter(t=>(+t.ts||0)>=cut);
- return{me:{...pub(u),task:taskView(u),bonuses:(u.bonuses||[]).filter(x=>x.status!=='Cancelled'),dailyReferral:dailyTargetProgress(u)},cfg,db:{users:D.users.map(x=>({...pub(x),managedAccount:!!x.managedAccount,demoStats:x.demoStats||null,bonuses:(x.bonuses||[]),dailyReferralTargets:(x.dailyReferralTargets||[])})),pays:apays,wd:awd,demoWd:D.wd.filter(w=>D.users.some(x=>x.id===w.uid&&x.managedAccount&&!x.admin)),tix:atix,daily:D.daily||{},storage:(supabaseConfigured?'supabase':'file'),pay:paySlots(),qrStats:qrStatsView(),revenue:adminStats().revenue,adminStats:adminStats()}};
+ return{me:{...pub(u),task:taskView(u),bonuses:(u.bonuses||[]).filter(x=>x.status!=='Cancelled'),dailyReferral:dailyTargetProgress(u)},cfg,db:{users:D.users.map(x=>({...pub(x),managedAccount:!!x.managedAccount,demoStats:x.demoStats||null,bonuses:(x.bonuses||[]),dailyReferralTargets:(x.dailyReferralTargets||[])})),pays:apays,wd:awd,demoWd:D.wd.filter(w=>D.users.some(x=>x.id===w.uid&&x.managedAccount&&!x.admin)),tix:atix,daily:D.daily||{},storage:(supabaseConfigured?'supabase':'file'),pay:paySlots(),qrStats:qrStatsView(),referralUnlocks:D.referralUnlocks.slice(-500).reverse(),revenue:adminStats().revenue,adminStats:adminStats()}};
 }
  const rf=D.users.filter(x=>x.refBy===u.id),ids=new Set(rf.map(x=>x.id));
  return{me:{...pub(u),task:ver(u)?taskView(u):null,bonuses:(u.bonuses||[]).filter(x=>x.status!=='Cancelled'),dailyReferral:dailyTargetProgress(u)},cfg,db:{users:[pub(u),...rf.map(x=>({id:x.id,name:x.name,created:x.created,refBy:x.refBy}))],
@@ -412,7 +413,7 @@ const R={
  async 'admin/restore'(r,res,b,u){if(!u.admin)return bad(res,'Forbidden',403);const d=b.data;
   if(!d||!Array.isArray(d.users)||!Array.isArray(d.pays)||!Array.isArray(d.wd))return bad(res,'Invalid backup file');
   if(!d.users.every(x=>x&&typeof x.id==='string'&&typeof x.email==='string'&&x.hash&&x.salt)||!d.users.some(x=>x.admin))return bad(res,'Invalid backup file (users or admin missing)');
-  D.users=d.users;D.pays=d.pays;D.wd=d.wd;D.tix=Array.isArray(d.tix)?d.tix:[];D.daily=d.daily&&typeof d.daily==='object'?d.daily:{};D.pay=d.pay&&typeof d.pay==='object'?d.pay:{};D.qrStats=d.qrStats&&typeof d.qrStats==='object'?d.qrStats:{};D.settings=d.settings&&typeof d.settings==='object'?d.settings:D.settings;D.adminStatsReset=d.adminStatsReset&&typeof d.adminStatsReset==='object'?d.adminStatsReset:null;D.adminDemo=d.adminDemo&&typeof d.adminDemo==='object'?d.adminDemo:null;D.sessions={};D.resets={};save();
+  D.users=d.users;D.pays=d.pays;D.wd=d.wd;D.tix=Array.isArray(d.tix)?d.tix:[];D.daily=d.daily&&typeof d.daily==='object'?d.daily:{};D.pay=d.pay&&typeof d.pay==='object'?d.pay:{};D.qrStats=d.qrStats&&typeof d.qrStats==='object'?d.qrStats:{};D.referralUnlocks=Array.isArray(d.referralUnlocks)?d.referralUnlocks:[];D.settings=d.settings&&typeof d.settings==='object'?d.settings:D.settings;D.adminStatsReset=d.adminStatsReset&&typeof d.adminStatsReset==='object'?d.adminStatsReset:null;D.adminDemo=d.adminDemo&&typeof d.adminDemo==='object'?d.adminDemo:null;D.sessions={};D.resets={};save();
   res.setHeader('Set-Cookie','sid=; HttpOnly; Path=/; Max-Age=0');send(res,200,{ok:1})},
  async 'admin/payment'(r,res,b,u){if(!u.admin)return bad(res,'Forbidden',403);const sl=Math.floor(+b.slot),upi=str(b.upi,60),payee=str(b.payee,60);if(!Number.isInteger(sl)||sl<0||sl>999)return bad(res,'Invalid QR slot');
   if(!/^[\w.\-]{2,}@[\w]{2,}$/.test(upi))return bad(res,'Enter a valid UPI ID');if(!payee)return bad(res,'Enter the account holder name');
@@ -427,14 +428,35 @@ const R={
  async 'admin/demo-create'(r,res,b,u){if(!u.admin)return bad(res,'Forbidden',403);const name=str(b.name,80),email=str(b.email,180).toLowerCase(),password=str(b.password,100);if(name.length<2||!EMAIL.test(email)||password.length<8)return bad(res,'Enter a name, valid email, and password of at least 8 characters');if(D.users.some(x=>x.email===email))return bad(res,'Email is already used',409);const salt=rid()+rid(),id=nid(),v=n=>{const x=Number(n??0);return Number.isFinite(x)&&x>=0&&x<=1e12?x:null};const balance=v(b.balance),earned=v(b.earned),referrals=v(b.referrals),withdrawals=v(b.withdrawals);if([balance,earned,referrals,withdrawals].some(x=>x===null))return bad(res,'Enter valid non-negative account values');D.users.push({id,email,name,salt,hash:hp(password,salt),ref:rid().toUpperCase().slice(0,6),refBy:null,created:Date.now(),progress:{},managedAccount:true,demoStats:{balance,earned,referrals:Math.floor(referrals),withdrawals:Math.floor(withdrawals)},demoCreatedByAdmin:true});save();send(res,200,{ok:1,id})},
  async 'admin/home-images'(r,res,b,u){if(!u.admin)return bad(res,'Forbidden',403);if(!Array.isArray(b.images)||b.images.length>30)return bad(res,'Add up to 30 images');const images=[];for(const raw of b.images){if(typeof raw!=='string'||raw.length>700000||!/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(raw))return bad(res,'Each image must be PNG, JPG, WEBP or GIF under about 500 KB');images.push(raw)}D.settings=D.settings||{};D.settings.homeImages=images;save();send(res,200,{ok:1,count:images.length})},
  async 'admin/demo'(r,res,b,u){if(!u.admin)return bad(res,'Forbidden',403);const num=(v,max=1e12)=>{const n=Number(v);return Number.isFinite(n)&&n>=0&&n<=max?n:null};const balance=num(b.balance),earned=num(b.earned),referrals=num(b.referrals,1000000),withdrawals=num(b.withdrawals,1000000);if([balance,earned,referrals,withdrawals].some(x=>x===null))return bad(res,'Enter valid non-negative numbers');D.adminDemo={balance,earned,referrals:Math.floor(referrals),withdrawals:Math.floor(withdrawals),updated:Date.now()};save();send(res,200,{ok:1,adminDemo:D.adminDemo})},
+ async 'referral/wallet-unlock'(r,res,b,u){
+  const uid=str(b.uid,40).trim();if(!uid)return bad(res,"Enter the referred user UID");
+  const t=D.users.find(x=>x.id===uid);
+  if(!t||t.refBy!==u.id)return bad(res,'Only your own direct referral can be unlocked.',403);
+  if(t.admin||t.blocked||t.managedAccount)return bad(res,'This account cannot use referral wallet unlock.',409);
+  if(ver(t))return bad(res,"This task is already unlocked.",409);
+  if(t.referralUnlockAt||D.pays.some(p=>p.uid===t.id&&p.status==='Verified'))return bad(res,'This user has already completed a task unlock payment. Contact admin if access is still locked.',409);
+  if(hasBlockingPayment(t))return bad(res,"This user already has a payment pending or verified. Ask them to check their payment status.",409);
+  if(u.admin||u.managedAccount)return bad(res,'This wallet cannot be used for referral unlock.',403);
+  const amount=payTotalFor(t),current=bal(u);
+  if(!Number.isFinite(amount)||amount<=0)return bad(res,'Invalid task unlock amount. Please contact admin.',409);
+  if(current+1e-9<amount)return send(res,409,{ok:0,code:'INSUFFICIENT_BALANCE',error:'Insufficient wallet balance. The referred user must log in and pay for their own task unlock.',balance:current,amount});
+  const now=Date.now(),id=rid();
+  u.walletDebits=Array.isArray(u.walletDebits)?u.walletDebits:[];
+  // Debit and unlock are committed together in the same server-side operation.
+  u.walletDebits.push({id,amount,uid:t.id,targetName:str(t.name,60),reason:'Referral task unlock',ts:now});
+  t.taskLocked=false;delete t.taskLockedAt;t.referralUnlockAt=now;t.referralUnlockedBy=u.id;
+  D.referralUnlocks.push({id,referrerId:u.id,referrerName:str(u.name,60),targetId:t.id,targetName:str(t.name,60),amount,ts:now,status:'Completed'});
+  save();send(res,200,{ok:1,amount,balance:bal(u),target:{uid:t.id,name:t.name,taskUnlocked:true}});
+ },
  async 'referral/status'(r,res,b,u){
   const uid=str(b.uid,40).trim();if(!uid)return bad(res,'Enter a referral UID');
   const direct=D.users.filter(x=>x.refBy===u.id),l2=D.users.filter(x=>direct.some(d=>d.id===x.refBy)),l3=D.users.filter(x=>l2.some(d=>d.id===x.refBy));
   const tree=[...direct.map(x=>({x,level:1})),...l2.map(x=>({x,level:2})),...l3.map(x=>({x,level:3}))];
   const found=tree.find(v=>v.x.id===uid);if(!found)return bad(res,'Ye UID aapke referral tree mein nahi mili.',404);
   const t=found.x,verified=D.pays.some(p=>p.uid===t.id&&p.status==='Verified');
-  const taskUnlocked=!!t.admin||!!(t&&!t.taskLocked&&(t.managedAccount||t.demo||t.adminVerified||verified));
-  send(res,200,{ok:1,uid:t.id,name:str(t.name,60)||'Referral user',level:found.level,taskUnlocked,paymentStatus:verified?'Verified':D.pays.some(p=>p.uid===t.id&&p.status==='Pending Verification')?'Pending verification':'Not verified'});
+  const taskUnlocked=!!t.admin||!!(t&&!t.taskLocked&&(t.managedAccount||t.demo||t.adminVerified||t.referralUnlockAt||verified));
+  const pending=D.pays.some(p=>p.uid===t.id&&p.status==='Pending Verification'),previouslyPaid=!!t.referralUnlockAt||D.pays.some(p=>p.uid===t.id&&p.status==='Verified');
+  send(res,200,{ok:1,uid:t.id,name:str(t.name,60)||'Referral user',level:found.level,taskUnlocked,paymentStatus:verified?'Verified':pending?'Pending verification':t.referralUnlockAt?'Unlocked by referral wallet':'Not verified',unlockPrice:payTotalFor(t),referrerBalance:bal(u),canWalletUnlock:found.level===1&&!taskUnlocked&&!pending&&!previouslyPaid&&!t.blocked&&!t.managedAccount&&!u.admin&&!u.managedAccount,walletSufficient:bal(u)+1e-9>=payTotalFor(t)});
  },
  async 'bonus/claim'(r,res,b,u){const id=str(b.id,80),x=(u.bonuses||[]).find(v=>v.id===id);if(!x)return bad(res,'Bonus not found',404);if(x.status==='Claimed')return bad(res,'Bonus already claimed',409);if(x.status!=='Pending')return bad(res,'Bonus is not available',409);x.status='Claimed';x.claimedAt=Date.now();if(u.managedAccount){u.demoStats=u.demoStats||{balance:0,earned:0,referrals:0,withdrawals:0};u.demoStats.balance=(+u.demoStats.balance||0)+(+x.amount||0);u.demoStats.earned=(+u.demoStats.earned||0)+(+x.amount||0)}save();send(res,200,{ok:1,bonus:{id:x.id,amount:x.amount,status:x.status}})},
  async 'daily-referral/claim'(r,res,b,u){const targetId=str(b.targetId,80),v=dailyTargetProgress(u),t=v.targets.find(x=>x.id===targetId);if(!t)return bad(res,'Daily target not found',404);if(!t.completed)return bad(res,'Target is not complete yet');if(t.claimed)return bad(res,'This target reward has already been claimed today',409);u.dailyReferralClaims=Array.isArray(u.dailyReferralClaims)?u.dailyReferralClaims:[];u.dailyReferralClaims.push({day:v.day,targetId,amount:t.amount,claimedAt:Date.now()});u.dailyReferralRewards=Array.isArray(u.dailyReferralRewards)?u.dailyReferralRewards:[];u.dailyReferralRewards.push({id:rid(),day:v.day,targetId,amount:t.amount,ts:Date.now()});if(u.managedAccount){u.demoStats=u.demoStats||{balance:0,earned:0,referrals:0,withdrawals:0};u.demoStats.balance=(+u.demoStats.balance||0)+t.amount;u.demoStats.earned=(+u.demoStats.earned||0)+t.amount}save();send(res,200,{ok:1,amount:t.amount})},
@@ -467,7 +489,7 @@ const srv=http.createServer(async(req,res)=>{
   if(url.pathname==='/health'){res.writeHead(200,{'Content-Type':'text/plain'});return res.end('ok')}
   if(url.pathname==='/api/state'&&req.method==='GET'){const u=authU(req);return u?send(res,200,state(u)):send(res,200,{me:null,cfg:{homeImages:Array.isArray(D.settings&&D.settings.homeImages)?D.settings.homeImages:[]},db:{users:[],pays:[],wd:[],tix:[]}})}
   if(url.pathname==='/api/backup'&&req.method==='GET'){const u=authU(req);if(!u||!u.admin)return bad(res,'Forbidden',403);
-   res.writeHead(200,{'Content-Type':'application/json','Content-Disposition':'attachment; filename="referkaro-backup-'+day()+'.json"'});return res.end(JSON.stringify({users:D.users,pays:D.pays,wd:D.wd,tix:D.tix,daily:D.daily||{},pay:D.pay||{},qrStats:D.qrStats||{},settings:D.settings||{},adminStatsReset:D.adminStatsReset||null,adminDemo:D.adminDemo||null}))}
+   res.writeHead(200,{'Content-Type':'application/json','Content-Disposition':'attachment; filename="referkaro-backup-'+day()+'.json"'});return res.end(JSON.stringify({users:D.users,pays:D.pays,wd:D.wd,tix:D.tix,daily:D.daily||{},pay:D.pay||{},qrStats:D.qrStats||{},referralUnlocks:D.referralUnlocks||[],settings:D.settings||{},adminStatsReset:D.adminStatsReset||null,adminDemo:D.adminDemo||null}))}
   if(url.pathname==='/api/razorpay/webhook'&&req.method==='POST'){
    let raw='';req.on('data',d=>{raw+=d;if(raw.length>2e6)req.destroy()});
    req.on('end',async()=>{try{
