@@ -20,9 +20,9 @@ const assert=require('assert'),fs=require('fs'),os=require('os'),path=require('p
   refState=await (await fetch(base+'/api/state',{headers:{cookie:ref}})).json();
   const bonus=refState.me.bonuses[0];r=await post('bonus/claim',{id:bonus.id},ref);assert.equal(r.status,200,await r.text());
   r=await post('referral/status',{uid:targetState.me.id},ref);assert.equal(r.status,200);let status=await r.json();assert.equal(status.canWalletUnlock,true);assert.equal(status.walletSufficient,true);assert.equal(status.unlockPrice,100);
-  r=await post('referral/wallet-unlock',{uid:targetState.me.id},ref);let result=await r.json();assert.equal(r.status,200,JSON.stringify(result));assert.equal(result.amount,100);assert.equal(result.balance,50);
+  r=await post('referral/wallet-unlock',{uid:targetState.me.id},ref);let result=await r.json();assert.equal(r.status,200,JSON.stringify(result));assert.equal(result.amount,100);assert.equal(result.balance,150);
   refState=await (await fetch(base+'/api/state',{headers:{cookie:ref}})).json();targetState=await (await fetch(base+'/api/state',{headers:{cookie:target}})).json();
-  assert.equal(refState.me.wallet.balance,50);assert.equal(refState.me.wallet.entries.some(x=>x.kind==='walletDebit'&&x.amt===-100),true);assert.equal(targetState.me.referralUnlockAt>0,true);assert.ok(targetState.me.task,'referred task should now be active');
+  assert.equal(refState.me.wallet.balance,150);assert.equal(refState.me.wallet.entries.some(x=>x.kind==='walletDebit'&&x.amt===-100),true);assert.equal(refState.me.wallet.entries.some(x=>x.kind==='referral'&&x.level===1&&x.amt===100),true,'wallet unlock must credit the existing direct referral commission');assert.equal(targetState.me.referralUnlockAt>0,true);assert.ok(targetState.me.task,'referred task should now be active');
   r=await post('referral/wallet-unlock',{uid:targetState.me.id},ref);assert.equal(r.status,409,'duplicate unlock blocked');
   // Second referrer has no balance. Referred user completes the existing QR/UTR + admin verify flow.
   const poor=await reg('Poor Referrer','poor@unlock.test','9876500003','ADMIN0');let poorState=await (await fetch(base+'/api/state',{headers:{cookie:poor}})).json();
@@ -34,6 +34,7 @@ const assert=require('assert'),fs=require('fs'),os=require('os'),path=require('p
   r=await post('admin/pay',{id:payment.id,status:'Verified'},admin);assert.equal(r.status,200,await r.text());
   qrState=await (await fetch(base+'/api/state',{headers:{cookie:qrTarget}})).json();assert.ok(qrState.me.task,'QR verified user should have active tasks');
   poorState=await (await fetch(base+'/api/state',{headers:{cookie:poor}})).json();assert.equal(poorState.me.wallet.balance,100,'existing referral payment commission should still be credited');assert.equal(poorState.me.wallet.entries.some(x=>x.kind==='walletDebit'),false,'QR payment must not create a wallet debit for the referrer');
-  console.log('Referral unlock integration: OK (wallet debit, referred task activation, duplicate prevention, insufficient-balance handoff, existing QR submission + admin verification, no referrer debit on QR path).');
+  const ui=fs.readFileSync(path.join(process.cwd(),'index.html'),'utf8');assert.match(ui,/Confirm Task Unlock/);assert.match(ui,/confirmWalletUnlockReferral/);assert.match(ui,/Unlocked/);
+  console.log('Referral unlock integration: OK (wallet debit, direct referral commission credit, referred task activation, duplicate prevention, insufficient-balance handoff, existing QR submission + admin verification, confirmation modal and Unlocked status).');
  }finally{child.kill('SIGTERM');await new Promise(r=>child.once('exit',r));fs.rmSync(dir,{recursive:true,force:true})}
 })().catch(e=>{console.error(e.stack);process.exitCode=1});

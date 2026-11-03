@@ -51,7 +51,7 @@ async function init(){
  if(D.settings&&D.settings.rewardConfig){for(const k of ['commission','level2','level3','dailyReward','taskReferral','taskReferralLevel2']){const n=Number(D.settings.rewardConfig[k]);if(Number.isFinite(n)&&n>=0&&n<=1000000)C[k]=n}}
  if(D.settings&&D.settings.businessConfig){const b=D.settings.businessConfig;for(const k of ['price','fee','minWd']){const n=Number(b[k]);if(Number.isFinite(n)&&n>=0&&n<=1000000)C[k]=n}const refs=Number(b.minDirectRefs);if(Number.isInteger(refs)&&refs>=0&&refs<=100000)C.minDirectRefs=refs;const day=String(b.withdrawalDay??'0');if(day==='any'||/^[0-6]$/.test(day))C.withdrawalDay=day==='any'?'any':Number(day)}
  const mp={};D.users.forEach(u=>{if(!/^\d{8}$/.test(u.id)){const n=nid();mp[u.id]=n;u.id=n}});
- if(Object.keys(mp).length){const f=o=>{if(o&&mp[o.uid])o.uid=mp[o.uid]};D.users.forEach(u=>{if(mp[u.refBy])u.refBy=mp[u.refBy]});D.pays.forEach(f);D.wd.forEach(f);Object.values(D.sessions).forEach(f);Object.values(D.resets).forEach(f);save();console.log('Migrated',Object.keys(mp).length,'user IDs to 8 digits')}
+ if(Object.keys(mp).length){const f=o=>{if(o&&mp[o.uid])o.uid=mp[o.uid]};D.users.forEach(u=>{if(mp[u.refBy])u.refBy=mp[u.refBy]});D.pays.forEach(f);D.wd.forEach(f);D.referralUnlocks.forEach(x=>{if(x&&mp[x.referrerId])x.referrerId=mp[x.referrerId];if(x&&mp[x.targetId])x.targetId=mp[x.targetId]});Object.values(D.sessions).forEach(f);Object.values(D.resets).forEach(f);save();console.log('Migrated',Object.keys(mp).length,'user IDs to 8 digits')}
 const AE=(E.ADMIN_EMAIL||'').trim().toLowerCase();
 const LIVE=!!(E.RAILWAY_ENVIRONMENT||E.RENDER||E.NODE_ENV==='production');
 if(AE&&!E.ADMIN_PASSWORD&&LIVE)throw new Error('Set ADMIN_PASSWORD in hosting Variables before production deployment.');
@@ -77,6 +77,10 @@ for(const a of (E.ENABLE_MANAGED_DEMO_ACCOUNTS==='true'?MANAGED_ACCOUNTS:[])){
  seededManaged=true;
 }
 if(seededManaged)save();
+// Backfill commissions for wallet-funded referral unlocks completed by earlier builds.
+let unlockRewardsMigrated=false;
+for(const unlock of D.referralUnlocks){if(unlock&&unlock.status==='Completed'&&creditWalletUnlockRewards(unlock))unlockRewardsMigrated=true}
+if(unlockRewardsMigrated)save();
 // One-time baseline reset: current dashboard Revenue and Verified count become 0.
 // Future verified payments continue increasing normally.
 if(!D.adminStatsReset){
@@ -107,11 +111,29 @@ const walletEntries=u=>{
  (u.taskReferralLevel2Rewards||[]).forEach(x=>{const rr=D.users.find(z=>z.id===x.uid);e.push({id:'task-ref2-'+x.uid,kind:'taskref2',level:2,who:'Level 2 referral task complete'+(rr?' — '+rr.name:''),ts:x.ts||Date.now(),amt:x.amount==null?C.taskReferralLevel2:(+x.amount||0)})});
  (u.dailyReferralRewards||[]).forEach(x=>e.push({id:'daily-referral-'+x.id,kind:'dailyReferral',level:0,who:'Daily referral target reward',ts:x.ts||Date.now(),amt:+x.amount||0}));
  (u.bonuses||[]).filter(x=>x.status==='Claimed').forEach(x=>e.push({id:'bonus-'+x.id,kind:'bonus',level:0,who:'Admin Bonus: '+(x.reason||'Special Bonus'),ts:x.claimedAt||x.createdAt||Date.now(),amt:+x.amount||0}));
+ (u.walletUnlockRewards||[]).forEach(x=>{const target=D.users.find(z=>z.id===x.targetId);e.push({id:'wallet-unlock-reward-'+x.sourceId+'-'+x.level,kind:'referral',level:x.level,who:'Referral task unlocked'+(target?' — '+target.name:''),ts:x.ts||Date.now(),amt:+x.amount||0})});
  (u.walletDebits||[]).forEach(x=>e.push({id:'wallet-debit-'+x.id,kind:'walletDebit',level:0,who:x.reason||'Referral task unlock'+(x.targetName?' — '+x.targetName:''),ts:x.ts||Date.now(),amt:-Math.abs(+x.amount||0)}));
  return e.sort((a,b)=>b.ts-a.ts);
 };
 const walletData=u=>{const e=walletEntries(u),withdrawn=D.wd.filter(w=>w.uid===u.id&&w.status!=='Rejected').reduce((s,w)=>s+w.amt,0),debits=(u.walletDebits||[]).reduce((s,x)=>s+Math.abs(+x.amount||0),0),earned=e.filter(x=>x.amt>0).reduce((s,x)=>s+x.amt,0),actual=earned-withdrawn-debits;const demo=u.admin&&D.adminDemo?D.adminDemo:null,managed=u.managedAccount&&u.demoStats&&typeof u.demoStats==='object'?u.demoStats:null;return{entries:e,earned:managed&&Number.isFinite(+managed.earned)?+managed.earned:demo&&Number.isFinite(+demo.earned)?+demo.earned:earned,balance:managed&&Number.isFinite(+managed.balance)?+managed.balance:demo&&Number.isFinite(+demo.balance)?+demo.balance:actual,adminDemo:!!demo,}};
 const bal=u=>walletData(u).balance;
+// A wallet-funded unlock is treated like a successful referral conversion for commissions,
+// while remaining separate from cash-payment/revenue records.
+const creditWalletUnlockRewards=unlock=>{
+ if(!unlock||!unlock.id)return false;
+ const target=D.users.find(x=>x.id===unlock.targetId),direct=D.users.find(x=>x.id===(unlock.referrerId||(target&&target.refBy)));
+ if(!target||!direct||target.refBy!==direct.id)return false;
+ const levels=[{user:direct,level:1,amount:C.commission}];
+ const second=D.users.find(x=>x.id===direct.refBy);if(second)levels.push({user:second,level:2,amount:C.level2});
+ const third=second&&D.users.find(x=>x.id===second.refBy);if(third)levels.push({user:third,level:3,amount:C.level3});
+ let changed=false;
+ for(const item of levels){
+  item.user.walletUnlockRewards=Array.isArray(item.user.walletUnlockRewards)?item.user.walletUnlockRewards:[];
+  if(item.user.walletUnlockRewards.some(x=>x.sourceId===unlock.id&&x.level===item.level))continue;
+  item.user.walletUnlockRewards.push({sourceId:unlock.id,targetId:target.id,level:item.level,amount:Math.max(0,Number(item.amount)||0),ts:unlock.ts||Date.now()});changed=true;
+ }
+ return changed;
+};
 // ---- daily task content (edit content.json, not this file) ----
 const CF=E.CONTENT_FILE||path.join(__dirname,'content.json');
 let CONTENT={modules:[]};
@@ -445,8 +467,11 @@ const R={
   // Debit and unlock are committed together in the same server-side operation.
   u.walletDebits.push({id,amount,uid:t.id,targetName:str(t.name,60),reason:'Referral task unlock',ts:now});
   t.taskLocked=false;delete t.taskLockedAt;t.referralUnlockAt=now;t.referralUnlockedBy=u.id;
-  D.referralUnlocks.push({id,referrerId:u.id,referrerName:str(u.name,60),targetId:t.id,targetName:str(t.name,60),amount,ts:now,status:'Completed'});
-  save();send(res,200,{ok:1,amount,balance:bal(u),target:{uid:t.id,name:t.name,taskUnlocked:true}});
+  const unlockRecord={id,referrerId:u.id,referrerName:str(u.name,60),targetId:t.id,targetName:str(t.name,60),amount,ts:now,status:'Completed'};
+  D.referralUnlocks.push(unlockRecord);
+  // Credit Level 1/2/3 referral commissions using the existing admin reward settings.
+  creditWalletUnlockRewards(unlockRecord);
+  save();send(res,200,{ok:1,amount,balance:bal(u),commission:C.commission,rewards:{level1:C.commission,level2:C.level2,level3:C.level3},target:{uid:t.id,name:t.name,taskUnlocked:true}});
  },
  async 'referral/status'(r,res,b,u){
   const uid=str(b.uid,40).trim();if(!uid)return bad(res,'Enter a referral UID');
