@@ -38,10 +38,21 @@ const assert=require('assert'),fs=require('fs'),os=require('os'),path=require('p
   r=await post('admin/settings',{telegramJoin:'https://t.me/test',telegramSupport:'https://t.me/test',authSupport:'https://t.me/test',upiOpenApp:true,paymentMode:'qr'},admin);assert.equal(r.status,200,await r.text());
   r=await post('pay',{slot:0,utr:'Rahul Sharma'},qrTarget);assert.equal(r.status,400,'plain names must not pass as UTR');
   r=await post('pay',{slot:0,utr:'ABC123456789'},qrTarget);const payResult=await r.json();assert.equal(r.status,200,JSON.stringify(payResult));const payment=payResult.payment;
+  // Pending-verification count is visible to the referrer before admin verifies the UTR.
+  poorState=await (await fetch(base+'/api/state',{headers:{cookie:poor}})).json();assert.equal(poorState.me.referralUnlock.pending,1);assert.equal(poorState.me.referralUnlock.verified,0);
   r=await post('admin/pay',{id:payment.id,status:'Verified'},admin);assert.equal(r.status,200,await r.text());
+  poorState=await (await fetch(base+'/api/state',{headers:{cookie:poor}})).json();assert.equal(poorState.me.referralUnlock.pending,0);assert.equal(poorState.me.referralUnlock.verified,1);
   qrState=await (await fetch(base+'/api/state',{headers:{cookie:qrTarget}})).json();assert.ok(qrState.me.task,'QR verified user should have active tasks');
   r=await post('ticket',{type:'Payment',msg:'Test support ticket'},qrTarget);assert.equal(r.status,200);const adminState=await (await fetch(base+'/api/state',{headers:{cookie:admin}})).json();const createdTicket=adminState.db.tix.find(x=>x.msg==='Test support ticket');assert.ok(createdTicket&&createdTicket.ts&&createdTicket.createdAt,'ticket must retain its creation timestamp');
   poorState=await (await fetch(base+'/api/state',{headers:{cookie:poor}})).json();assert.equal(poorState.me.wallet.balance,100,'existing referral payment commission should still be credited');assert.equal(poorState.me.wallet.entries.some(x=>x.kind==='walletDebit'),false,'QR payment must not create a wallet debit for the referrer');
+  // Admin ON/OFF switch, minimum-referral rule and manual per-user permission.
+  r=await post('admin/business-config',{price:100,fee:0,minWd:500,minDirectRefs:3,minUnlockRefs:0,walletUnlockEnabled:false,withdrawalDay:'any'},admin);assert.equal(r.status,200,await r.text());
+  const t2=await reg('Target Two','target2@unlock.test','9876500005',poorState.me.ref);const t2State=await (await fetch(base+'/api/state',{headers:{cookie:t2}})).json();
+  r=await post('referral/wallet-unlock',{uid:t2State.me.id},poor);assert.equal(r.status,403,'switch OFF must block wallet unlock');
+  r=await post('admin/business-config',{price:100,fee:0,minWd:500,minDirectRefs:3,minUnlockRefs:5,walletUnlockEnabled:true,withdrawalDay:'any'},admin);assert.equal(r.status,200,await r.text());
+  r=await post('referral/wallet-unlock',{uid:t2State.me.id},poor);assert.equal(r.status,403,'below minimum verified referrals must block');
+  r=await post('admin/user',{id:poorState.me.id,action:'unlockallow'},admin);assert.equal(r.status,200,await r.text());
+  r=await post('referral/wallet-unlock',{uid:t2State.me.id},poor);assert.equal(r.status,200,'admin manual permission must allow unlock');
   const ui=fs.readFileSync(path.join(process.cwd(),'index.html'),'utf8');assert.match(ui,/Confirm Task Unlock/);assert.match(ui,/confirmWalletUnlockReferral/);assert.match(ui,/Unlocked/);
   console.log('Referral unlock integration: OK (wallet debit, direct referral commission credit, referred task activation, duplicate prevention, insufficient-balance handoff, existing QR submission + admin verification, confirmation modal and Unlocked status).');
  }finally{child.kill('SIGTERM');await new Promise(r=>child.once('exit',r));fs.rmSync(dir,{recursive:true,force:true})}

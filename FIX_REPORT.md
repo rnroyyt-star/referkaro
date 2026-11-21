@@ -71,3 +71,26 @@ This ZIP intentionally does not import from Upstash. Before deploying it, confir
 - Fixed PWA icon aliases and added the `/icons/icon-192.png` and `/icons/icon-512.png` files required by the manifest and service worker. Bumped the static cache version.
 - Repaired package test-script paths so the included test suite runs from the project root.
 - Validation: `npm test` passes (syntax, server smoke, global-target visibility for verified/unverified users, preserved task-unlock eligibility, and claim tests, and PWA endpoint/icon tests). A separate legacy migration test also passed and confirmed old target claims are preserved.
+
+## 2026-11-21 — Daily referral task reward and progress UI fix
+
+### Fixed
+- Direct referral task completion reward (`taskReferral`, default ₹5) now credits once per referred user per India-time day, instead of once for the user's lifetime.
+- Level 2 referral task completion reward (`taskReferralLevel2`, default ₹2) now credits once per referred user per India-time day.
+- Each new daily reward record stores its IST day and a unique record ID, so wallet history entries remain distinct across days.
+- Legacy reward records without a day are matched using their timestamp to prevent a duplicate credit on the deployment day; historical records and amounts are retained.
+- Repeated task-state refreshes and repeated completion checks do not duplicate a reward on the same day.
+- Daily Referral Targets now expose remaining referrals and percentage progress from the server. The user-facing card highlights the next target and displays, for example, “2 more referrals needed” when progress is 3 of 5.
+- Clarified the referral rules to state that task referral rewards are paid once per referred user per day. Corrected the admin target description to match the eligible referral count.
+
+### Automated validation
+- `npm test`: passed.
+- Server syntax and inline browser JavaScript syntax: passed.
+- Registration/login/state smoke tests: passed.
+- Existing bonus, cumulative daily target, claim idempotency, UPI setting, and referral wallet-unlock tests: passed.
+- New two-day integration test: passed. It completed Level 1 and Level 2 referral tasks on two simulated India-time dates, verified ₹5/₹2 credits on both dates, and verified no duplicate credit from repeated task/state requests.
+- PWA manifest, service worker, and icon endpoint checks: passed.
+
+### Production verification still required
+- The ZIP was tested locally with isolated temporary data. It was not connected to the live Hostinger deployment or production Supabase row, so live database persistence, concurrent production traffic, and real payment-provider behavior are not certified by these tests.
+- Back up the current production files and Supabase `app_state` row before deployment. Deploy to staging first and verify one real referral task completion and next-day credit before promoting to production.
