@@ -591,7 +591,40 @@ const srv=http.createServer(async(req,res)=>{
   res.writeHead(404);res.end('Not found');
  }catch(e){console.error(e);if(!res.headersSent)bad(res,'Server error',500)}
 });
-init().then(()=>srv.listen(PORT,()=>console.log('Running on',APP_URL))).catch(e=>{
+// ---- Server-side settlement of daily-task referral rewards ----
+// Task completion can finish passively (the 5-minute AI timer ends with no request), and the
+// Level 1 / Level 2 rewards used to be credited only when the *referred* user next opened the app.
+// If they closed the app or the IST day rolled over first, that day's reward was lost for good.
+// This sweep re-evaluates every user who has task activity today, so rewards never depend on a client request.
+function settleTaskRewards(){
+ try{const d=day();for(const u of D.users){if(!u||u.admin||u.blocked||!u.t||u.t.day!==d||!ver(u))continue;taskView(u)}}
+ catch(e){console.error('settleTaskRewards failed:',e.message)}
+}
+// Optional one-off backfill (set BACKFILL_TASK_REWARDS=true, restart once, then remove the variable):
+// pays Level 1 / Level 2 task rewards for every day a referred user already has a recorded daily-task completion
+// but the referrer has no matching record. Idempotent, so repeated runs never double-pay.
+function backfillTaskReferralRewards(){
+ const recDay=x=>x&&x.day?String(x.day):(x&&Number(x.ts)>0?new Date(Number(x.ts)+19800000).toISOString().slice(0,10):'');
+ const has=(list,uid,d)=>Array.isArray(list)&&list.some(x=>x&&x.uid===uid&&recDay(x)===d);
+ let added=0;
+ for(const u of D.users){
+  if(!u||u.admin||u.managedAccount||!u.refBy)continue;
+  const parent=D.users.find(x=>x.id===u.refBy);if(!parent||parent.id===u.id)continue;
+  const grand=parent.refBy?D.users.find(x=>x.id===parent.refBy):null;
+  for(const r of (u.dailyRewards||[])){
+   const d=recDay(r);if(!d)continue;const ts=r.ts||Date.now();
+   parent.taskReferralRewards=Array.isArray(parent.taskReferralRewards)?parent.taskReferralRewards:[];
+   if(!has(parent.taskReferralRewards,u.id,d)){parent.taskReferralRewards.push({id:rid(),uid:u.id,day:d,amount:C.taskReferral,ts,backfill:true});added++}
+   if(grand&&grand.id!==parent.id){
+    grand.taskReferralLevel2Rewards=Array.isArray(grand.taskReferralLevel2Rewards)?grand.taskReferralLevel2Rewards:[];
+    if(!has(grand.taskReferralLevel2Rewards,u.id,d)){grand.taskReferralLevel2Rewards.push({id:rid(),uid:u.id,day:d,amount:C.taskReferralLevel2,ts,backfill:true});added++}
+   }
+  }
+ }
+ if(added){save();console.log('Backfilled',added,'task referral reward record(s)')}
+ return added;
+}
+init().then(()=>{if(E.BACKFILL_TASK_REWARDS==='true')backfillTaskReferralRewards();settleTaskRewards();setInterval(settleTaskRewards,20000);srv.listen(PORT,()=>console.log('Running on',APP_URL))}).catch(e=>{
  console.error('\n=== STARTUP ERROR ===');console.error(e.message,e.cause?('('+(e.cause.code||e.cause.message)+')'):'');
  console.error('Check SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_TABLE and SUPABASE_ROW_ID. The configured table must contain the existing state row with id TEXT PRIMARY KEY and data JSONB. This build never reads or writes Upstash.');process.exit(1)});
 process.on('SIGTERM',async()=>{await flush();process.exit(0)});
