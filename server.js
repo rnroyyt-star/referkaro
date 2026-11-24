@@ -115,7 +115,7 @@ const walletEntries=u=>{
  (u.walletDebits||[]).forEach(x=>e.push({id:'wallet-debit-'+x.id,kind:'walletDebit',level:0,who:x.reason||'Referral task unlock'+(x.targetName?' — '+x.targetName:''),ts:x.ts||Date.now(),amt:-Math.abs(+x.amount||0)}));
  return e.sort((a,b)=>b.ts-a.ts);
 };
-const walletData=u=>{const e=walletEntries(u),withdrawn=D.wd.filter(w=>w.uid===u.id&&w.status!=='Rejected').reduce((s,w)=>s+w.amt,0),debits=(u.walletDebits||[]).reduce((s,x)=>s+Math.abs(+x.amount||0),0),earned=e.filter(x=>x.amt>0).reduce((s,x)=>s+x.amt,0),actual=earned-withdrawn-debits;const demo=u.admin&&D.adminDemo?D.adminDemo:null,managed=u.managedAccount&&u.demoStats&&typeof u.demoStats==='object'?u.demoStats:null;return{entries:e,earned:managed&&Number.isFinite(+managed.earned)?+managed.earned:demo&&Number.isFinite(+demo.earned)?+demo.earned:earned,balance:managed&&Number.isFinite(+managed.balance)?+managed.balance:demo&&Number.isFinite(+demo.balance)?+demo.balance:actual,adminDemo:!!demo,}};
+const walletData=u=>{const e=walletEntries(u),legacy=u.legacyImport&&typeof u.legacyImport==='object'?u.legacyImport:null,importAt=Number(legacy&&legacy.importedAt||0),afterImport=x=>Number(x&& (x.ts||x.createdAt||x.created)||0)>=importAt&&importAt>0,withdrawn=D.wd.filter(w=>w.uid===u.id&&w.status!=='Rejected').reduce((s,w)=>s+(legacy&&importAt&&Number(w.ts||w.createdAt||0)<importAt?0:(+w.amt||0)),0),debits=(u.walletDebits||[]).reduce((s,x)=>s+(legacy&&importAt&&!afterImport(x)?0:Math.abs(+x.amount||0)),0),earned=legacy&&importAt&&Number.isFinite(+legacy.earned)?Math.max(0,+legacy.earned)+e.filter(x=>x.amt>0&&Number(x.ts||0)>=importAt).reduce((s,x)=>s+x.amt,0):e.filter(x=>x.amt>0).reduce((s,x)=>s+x.amt,0),newCredits=legacy&&importAt?e.filter(x=>Number(x.ts||0)>=importAt).reduce((s,x)=>s+x.amt,0):0,actual=legacy&&importAt&&Number.isFinite(+legacy.availableBalance)?Math.max(0,+legacy.availableBalance)+newCredits-withdrawn-debits:e.filter(x=>x.amt>0).reduce((s,x)=>s+x.amt,0)-withdrawn-debits;const demo=u.admin&&D.adminDemo?D.adminDemo:null,managed=u.managedAccount&&u.demoStats&&typeof u.demoStats==='object'?u.demoStats:null;return{entries:e,earned:managed&&Number.isFinite(+managed.earned)?+managed.earned:demo&&Number.isFinite(+demo.earned)?+demo.earned:earned,balance:managed&&Number.isFinite(+managed.balance)?+managed.balance:demo&&Number.isFinite(+demo.balance)?+demo.balance:actual,adminDemo:!!demo,}};
 const bal=u=>walletData(u).balance;
 const verifiedDirectRefCount=u=>D.users.filter(x=>x.refBy===u.id&&!x.admin&&!x.managedAccount&&!x.demo&&!x.blocked&&ver(x)).length;
 // Referral wallet unlock summary: verified / pending-verification / not-paid direct referrals, the admin rule, and whether this user may unlock now.
@@ -390,6 +390,30 @@ const R={
    system:'You are a friendly digital marketing tutor for beginners in India. Answer briefly in simple language (Hinglish if the user writes Hinglish). Give practical examples. Never promise income or earnings.',messages:ms})});
    const j=await a.json();if(!a.ok)throw new Error((j.error&&j.error.message)||'AI error');send(res,200,{reply:(j.content||[]).map(c=>c.text||'').join('').trim()||'(no reply)'})}
   catch(e){console.error('AI',e.message);bad(res,'AI is busy. Try again.',502)}},
+ async 'admin/import-users-csv'(r,res,b,u){
+  if(!u.admin)return bad(res,'Forbidden',403);
+  if(typeof b.csv!=='string'||b.csv.length>450000)return bad(res,'CSV missing or too large (maximum 450 KB)');
+  const parseCsv=raw=>{const rows=[];let row=[],field='',quoted=false;for(let i=0;i<raw.length;i++){const c=raw[i];if(quoted){if(c==='"'&&raw[i+1]==='"'){field+='"';i++}else if(c==='"')quoted=false;else field+=c}else if(c==='"')quoted=true;else if(c===','){row.push(field);field=''}else if(c==='\n'){row.push(field);rows.push(row);row=[];field=''}else if(c!=='\r')field+=c}if(quoted)throw new Error('CSV has an unfinished quoted field');if(field.length||row.length){row.push(field);rows.push(row)}return rows};
+  let matrix;try{matrix=parseCsv(b.csv.replace(/^\uFEFF/,''))}catch(e){return bad(res,e.message)}
+  if(matrix.length<2)return bad(res,'CSV has no user rows');
+  const headers=matrix[0].map(x=>String(x||'').trim().toLowerCase());
+  const col=(...names)=>headers.findIndex(x=>names.includes(x));
+  const ix={id:col('uid','user id','id'),name:col('name','full name'),email:col('email','e-mail'),joined:col('joined','joined date','created'),unlocked:col('task unlocked','task_unlocked'),refs:col('referrals','referral count'),earned:col('earned','earned amount'),withdrawn:col('withdrawn or requested','withdrawn','withdrawn/requested'),balance:col('available balance','balance')};
+  if([ix.id,ix.name,ix.email].some(x=>x<0))return bad(res,'Required columns missing: UID, Name, Email');
+  const val=(row,i)=>i<0?'':String(row[i]??'').trim();
+  const parsed=[],errors=[],seen=new Set();
+  for(let n=1;n<matrix.length;n++){const row=matrix[n];if(!row.some(x=>String(x||'').trim()))continue;const id=val(row,ix.id),email=val(row,ix.email).toLowerCase(),name=val(row,ix.name);if(!/^\d{8}$/.test(id)){errors.push({row:n+1,reason:'Invalid 8-digit UID'});continue}if(!EMAIL.test(email)||!name){errors.push({row:n+1,reason:'Invalid name or email'});continue}if(seen.has(id)){errors.push({row:n+1,reason:'Duplicate UID in CSV'});continue}seen.add(id);const num=i=>{const x=val(row,i).replace(/[₹,\s]/g,'');if(!x)return null;const z=Number(x);return Number.isFinite(z)&&z>=0?Math.round(z*100)/100:null};let created=Date.parse(val(row,ix.joined));parsed.push({id,email,name,created:Number.isFinite(created)?created:Date.now(),unlocked:/^(yes|true|1|unlocked)$/i.test(val(row,ix.unlocked)),legacyImport:{source:'users-2026-11-24.csv',importedAt:Date.now(),referralCount:num(ix.refs),earned:num(ix.earned),withdrawnOrRequested:num(ix.withdrawn),availableBalance:num(ix.balance)}})}
+  if(!parsed.length)return bad(res,'No valid user rows found');
+  const byId=new Map(D.users.map(x=>[String(x.id),x])),emailOwner=new Map(D.users.filter(x=>x.email).map(x=>[String(x.email).toLowerCase(),String(x.id)]));
+  let added=0,existing=0,conflicts=0;
+  for(const item of parsed){if(byId.has(item.id)){existing++;continue}const owner=emailOwner.get(item.email);if(owner&&owner!==item.id){conflicts++;errors.push({uid:item.id,reason:'Email already belongs to another UID; skipped'});continue}
+   const salt=rid()+rid(),ref=rid().toUpperCase().slice(0,6);const user={id:item.id,email:item.email,name:item.name,salt,hash:hp(crypto.randomBytes(32).toString('base64url'),salt),ref,refBy:null,created:item.created,progress:{},passwordResetRequired:true,legacyImport:item.legacyImport};
+   if(item.unlocked){user.adminVerified=true;user.adminVerifiedAt=item.created;user.taskLocked=false}else user.taskLocked=true;
+   D.users.push(user);byId.set(item.id,user);emailOwner.set(item.email,item.id);added++;
+  }
+  if(added)save();
+  send(res,200,{ok:1,totalRows:parsed.length,added,alreadyPresent:existing,conflicts,invalidRows:errors.length,errors:errors.slice(0,50),passwordResetRequired:added});
+ },
  async 'admin/user'(r,res,b,u){if(!u.admin)return bad(res,'Forbidden',403);const t=D.users.find(x=>x.id===b.id);if(!t||t.admin)return bad(res,'Invalid user');
   if(b.action==='setdiscount'){const raw=b.percent;const pct=Number(raw);if(raw===null||raw===undefined||raw===''||!Number.isFinite(pct)||pct<0||pct>100)return bad(res,'Discount must be between 0% and 100%');t.referralDiscountPct=pct;save();return send(res,200,{ok:1,referralDiscountPct:pct})}
   if(b.action==='resetdiscount'){delete t.referralDiscountPct;save();return send(res,200,{ok:1,referralDiscountPct:null})}
@@ -560,7 +584,7 @@ const srv=http.createServer(async(req,res)=>{
   }
   if(url.pathname.startsWith('/api/')&&req.method==='POST'){const k=url.pathname.slice(5),h=R[k];if(!h)return bad(res,'Not found',404);
    if((req.headers['content-type']||'').indexOf('application/json')<0)return bad(res,'Bad request');
-   const u=authU(req);if(!PUBLIC.has(k)&&!u)return bad(res,'Please login',401);const parsed=await body(req,k==='admin/restore'?32e6:k==='admin/payment'?6e5:k==='admin/daily'?1e5:k==='admin/home-images'?24e6:2e4);if(parsed&&parsed.__bodyError)return bad(res,parsed.__bodyError,parsed.__bodyError==='Request body too large'?413:400);return await h(req,res,parsed,u)}
+   const u=authU(req);if(!PUBLIC.has(k)&&!u)return bad(res,'Please login',401);const parsed=await body(req,k==='admin/restore'?32e6:k==='admin/payment'?6e5:k==='admin/daily'?1e5:k==='admin/home-images'?24e6:k==='admin/import-users-csv'?6e5:2e4);if(parsed&&parsed.__bodyError)return bad(res,parsed.__bodyError,parsed.__bodyError==='Request body too large'?413:400);return await h(req,res,parsed,u)}
   if(req.method==='GET'&&['/manifest.json','/sw.js','/icons/icon-192.png','/icons/icon-512.png','/icons/icon-192-maskable.png','/icons/icon-512-maskable.png','/icon-192.png','/icon-512.png','/favicon.ico','/favicon.png','/favicon-32.png','/apple-touch-icon.png','/public/icon-192.png','/public/icon-512.png','/public/icons/icon-192.png','/public/icons/icon-512.png','/public/apple-touch-icon.png','/public/favicon-32.png'].includes(url.pathname)){
    // Support both the manifest's /icons/... paths and root-level icon URLs.
    // This keeps older manifests/hosting links working during deployment updates.
